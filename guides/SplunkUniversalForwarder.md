@@ -19,11 +19,11 @@
 - `./splunk add monitor /var/log/`
 - `./splunk restart`
 
-#  Sysmon
-## 1. Install using the following command:
+##  Sysmon
+### 1. Install using the following command:
 - `Sysmon64.exe -accepteula -I sysmonconfig-export.txt`
 
-## 2. Configure the forwarder to send Sysmon data to Splunk.  
+### 2. Configure the forwarder to send Sysmon data to Splunk.  
 3. Navigate to `c:\program files\splunkuniversalforwarder\etc\apps\splunkuniversalforwarder\local\inputs.conf` and add the following to the end of the file:
 > `[WinEventLog://Microsoft-Windows-Sysmon/Operational]
  disabled = false
@@ -32,7 +32,6 @@
 
 4. Restart the service.
 
-# Useful Links:
 ## Web monitoring input
 - http://10.100.137.3:8000/en-US/app/website_monitoring/web_ping_batch_create
  ![](images/21.png)
