@@ -1,0 +1,162 @@
+<form version="1.1" theme="dark">
+  <label>Command &amp; Control and Privilege Escalation</label>
+  <fieldset submitButton="false">
+    <input type="time" token="field1">
+      <label></label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="host" searchWhenChanged="true">
+      <label>Host</label>
+      <default>*</default>
+      <prefix>*</prefix>
+      <suffix>*</suffix>
+      <initialValue>*</initialValue>
+    </input>
+    <input type="text" token="process" searchWhenChanged="true">
+      <label>Process</label>
+      <default>*</default>
+      <prefix>*</prefix>
+      <suffix>*</suffix>
+      <initialValue>*</initialValue>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Process Calling Out</title>
+      <chart>
+        <search>
+          <query>index=main EventCode=22  host=$host$ process_name=$process$
+| timechart count by process_name
+| append 
+    [search index=main EventCode=22 host=$host$ process_name=$process$
+    | timechart count by QueryName]</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.chart.overlayFields">firefox.exe,taskhost.exe</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index%3Dmain%20EventCode%3D22%20%20host%3D$host$%0A%7C%20table%20QueryName%20process_name%20Image%20User%20host%20ProcessId%20answer%20record_type&amp;earliest=$field1.earliest$&amp;latest=$field1.latest$</link>
+        </drilldown>
+      </chart>
+    </panel>
+    <panel>
+      <title>Top Processes / Queries</title>
+      <table>
+        <title>EXCLUDING FIREFOX.EXE</title>
+        <search>
+          <query>index=main EventCode=22  host=$host$ (process_name=$process$ AND (process_name!=firefox.exe))
+| top process_name,QueryName limit=5</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Windows DNS Logs</title>
+      <table>
+        <search>
+          <query>index=main EventCode=22  host=$host$ process_name=$process$
+| table QueryName process_name Image User host ProcessId answer record_type</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Windows Process Investigator (Sysmon Logs)</title>
+      <input type="text" token="ppn" searchWhenChanged="true">
+        <label>Process Name or ProcessID</label>
+        <default>*</default>
+        <prefix>*</prefix>
+        <suffix>*</suffix>
+        <initialValue>*</initialValue>
+      </input>
+      <input type="text" token="user" searchWhenChanged="true">
+        <label>User</label>
+        <default>*</default>
+        <prefix>*</prefix>
+        <suffix>*</suffix>
+        <initialValue>*</initialValue>
+      </input>
+      <input type="checkbox" token="noise" searchWhenChanged="true">
+        <label>Filter Noisy Global Processes</label>
+        <choice value="ParentPath!=*vmtoolsd.exe* ParentPath!=*Splunk* ParentPath!=*CollectGuestLogs.exe*">Filter</choice>
+        <choice value="*">No</choice>
+        <default>ParentPath!=*vmtoolsd.exe* ParentPath!=*Splunk* ParentPath!=*CollectGuestLogs.exe*</default>
+        <initialValue>ParentPath!=*vmtoolsd.exe* ParentPath!=*Splunk* ParentPath!=*CollectGuestLogs.exe*</initialValue>
+        <delimiter> </delimiter>
+      </input>
+      <table>
+        <search>
+          <query>index=main EventCode=8 OR EventCode=1 OR EventCode=10 host=$host$
+| eval ParentPath=coalesce(ParentImage, SourceImage), ChildPath=coalesce(Image, TargetImage), ParentID=coalesce(ParentProcessId, SourceProcessId), ChildID=coalesce(ProcessId,TargetProcessId), ParentUser=coalesce(ParentUser, SourceUser), ChildUser=coalesce(User,TargetUser) 
+| search $noise$ (ParentUser=$user$)
+| fields *
+| fillnull value=" " CommandLine
+| eval parent = ParentPath." (".ParentID.")"
+| eval child = ChildPath." (".ChildID.")"
+| eval detail=strftime(_time,"%Y-%m-%d %H:%M:%S")." ".CommandLine
+| pstree child=child parent=parent detail=detail
+| search tree=$ppn$
+| table tree</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="count">2</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Windows CVEs</title>
+        <search>
+          <query>index=main 
+| eval Signature=case("C:\Windows\System32\WindowsCoreDeviceInfo.dll","CVE-2020-0787","NetServerAuthenticate3","CVE-2020-1472")</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Web CVEs</title>
+        <search>
+          <query>index=main  source="/var/log/apache2/access.log" NOT("*Splunk Website Monitoring*")
+| rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
+| rex field=_raw "\"(?&lt;HTTP_Method&gt;\w+):\/\/(?&lt;Target_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?&lt;HTTP_Request_URL&gt;.*)\"\s\""
+| eval Request_Path=urldecode(HTTP_Request_Path) 
+| eval Request_URL=urldecode(HTTP_Request_URL) 
+| eval Signature=case((Request_Path="*{jndi:*://*}" OR Request_Path="*{::-j}${::-n}${::-d}${::-i}"),"Log4J")</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+</form>

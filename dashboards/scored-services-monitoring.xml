@@ -1,0 +1,468 @@
+<form version="1.1" theme="dark">
+  <label>Scored Services Monitoring</label>
+  <fieldset submitButton="true">
+    <input type="time" token="field1" searchWhenChanged="true">
+      <label></label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="host" searchWhenChanged="true">
+      <label>Host</label>
+      <default>*</default>
+      <initialValue>*</initialValue>
+    </input>
+    <input type="text" token="user" searchWhenChanged="true">
+      <label>User</label>
+      <default>*</default>
+      <initialValue>*</initialValue>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Postfix Connections</title>
+      <chart>
+        <search>
+          <query>index=main source=/var/log/mail.log host=*$host$*
+| rex field=_raw "\w{3}\s\d{2}\s\d{2}:\d{2}:\d{2}\s(?&lt;Host_Name&gt;\w+)\s(?&lt;Process_Name&gt;\w.*)\[\d+\]:"
+| search Process_Name IN ("postfix/smtpd","postfix/qmgr","postfix/local")
+| rex field=_raw "\w{3}\s\d{2}\s\d{2}:\d{2}:\d{2}\s\w+\s\w.*\[\d+\]:\s(?&lt;Connection_Type&gt;\w+)\s.*\[(?&lt;Client_IP&gt;\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3})\].*"
+| rex field=_raw "\&lt;(?&lt;Email_Address&gt;\w.*)\&gt;,.*"
+| transaction maxspan=1h startswith=connect endswith=disconnect
+| search *$user$*
+| timechart count by Client_IP
+| append 
+    [search index=main source=/var/log/mail.log
+    | search host=*$host$*
+    | rex field=_raw "\w{3}\s\d{2}\s\d{2}:\d{2}:\d{2}\s(?&lt;Host_Name&gt;\w+)\s(?&lt;Process_Name&gt;\w.*)\[\d+\]:"
+    | search Process_Name IN ("postfix/smtpd","postfix/qmgr","postfix/local")
+    | rex field=_raw "\w{3}\s\d{2}\s\d{2}:\d{2}:\d{2}\s\w+\s\w.*\[\d+\]:\s(?&lt;Connection_Type&gt;\w+)\s.*\[(?&lt;Client_IP&gt;\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3})\].*"
+    | rex field=_raw "\&lt;(?&lt;Email_Address&gt;\w.*)\&gt;,.*"
+    | transaction maxspan=1h startswith=connect endswith=disconnect
+    | search *$user$*
+    | eval Action=if(isnull(mvfind(Connection_Type,"lost")),"Success","Failure")
+    | timechart count by Action ]</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">Success,Failure</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Dovecot Connections</title>
+      <chart>
+        <search>
+          <query>index=main source=/var/log/mail.log host=*$host$*
+| rex field=_raw "\w{3}\s\d{2}\s\d{2}:\d{2}:\d{2}\s(?&lt;Host_Name&gt;\w+)\s(?&lt;Process_Name&gt;\w+)\:\s(?&lt;Dovecot_Process&gt;\w.*):\s(?&lt;Connection_Type&gt;\w+):\s"
+| search Process_Name="dovecot"
+| rex field=_raw "user=(?&lt;username&gt;.*)&gt;,.*rip=(?&lt;Client_IP&gt;\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3}),\slip=(?&lt;Target_IP&gt;\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3})"
+| transaction maxspan=30s startswith=Login endswith=Disconnected
+| search *$user$*
+| timechart count by Client_IP
+| append 
+    [search index=main source=/var/log/mail.log
+    | search host=*$host$*
+    | rex field=_raw "\w{3}\s\d{2}\s\d{2}:\d{2}:\d{2}\s(?&lt;Host_Name&gt;\w+)\s(?&lt;Process_Name&gt;\w+)\:\s(?&lt;Dovecot_Process&gt;\w.*):\s(?&lt;Connection_Type&gt;\w+):\s"
+    | transaction maxspan=30s startswith=Login endswith=Disconnected
+    | search *$user$*
+    | eval Action=if(isnull(mvfind(Connection_Type,"Login")),"Failure","Success") 
+    | timechart count by Action ]</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">Success,Failure</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>HTTP Request Monitoring</title>
+      <chart>
+        <search>
+          <query>index=main source="/var/log/*access.log*" NOT("*Splunk Website Monitoring*") host=*$host$*
+| rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
+| search HTTP_Request_Method=GET AND HTTP_Request="-"
+| search HTTP_Request_Path=*$path$*
+| timechart count by Client_IP
+| append 
+    [search index=main source="/var/log/*access.log*" NOT("*Splunk Website Monitoring*") host=*$host$*
+    | rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
+    | search HTTP_Request_Method=GET AND HTTP_Request="-"
+    | search HTTP_Request_Path=*$path$*    
+    | eval Action=if((HTTP_Response_Code&gt;=200 AND HTTP_Response_Code&lt;300),"Successful","Failure")
+    | search Action=*$action3$* 
+    | timechart count by Action ]</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">Failure,Successful</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Postfix Logs</title>
+      <input type="text" token="action" searchWhenChanged="true">
+        <label>Action (Failure or Success)</label>
+        <default>*</default>
+      </input>
+      <table>
+        <search>
+          <query>index=main source=/var/log/mail.log host=*$host$*
+| rex field=_raw "\w{3}\s\d{2}\s\d{2}:\d{2}:\d{2}\s(?&lt;Host_Name&gt;\w+)\s(?&lt;Process_Name&gt;\w.*)\[\d+\]:"
+| search Process_Name IN ("postfix/smtpd","postfix/qmgr","postfix/local")
+| rex field=_raw "\w{3}\s\d{2}\s\d{2}:\d{2}:\d{2}\s\w+\s\w.*\[\d+\]:\s(?&lt;Connection_Type&gt;\w+)\s.*\[(?&lt;Client_IP&gt;\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3})\].*"
+| rex field=_raw "\&lt;(?&lt;Email_Address&gt;\w.*)\&gt;,.*"
+| transaction maxspan=1h startswith=connect endswith=disconnect
+| search *$user$*
+| eval Action=if(isnull(mvfind(Connection_Type,"lost")),"Success","Failure")
+| search Action=$action$
+| table _time Action host Client_IP Email_Address</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index%3Dmain%20source%3D%2Fvar%2Flog%2Fmail.log%0A%7C%20search%20host%3D*$host$*%0A%7C%20rex%20field%3D_raw%20%22%5Cw%7B3%7D%5Cs%5Cd%7B2%7D%5Cs%5Cd%7B2%7D%3A%5Cd%7B2%7D%3A%5Cd%7B2%7D%5Cs(%3F%3CHost_Name%3E%5Cw%2B)%5Cs(%3F%3CProcess_Name%3E%5Cw.*)%5C%5B%5Cd%2B%5C%5D%3A%22%0A%7C%20search%20Process_Name%20IN%20(%22postfix%2Fsmtpd%22%2C%22postfix%2Fqmgr%22%2C%22postfix%2Flocal%22)%0A%7C%20rex%20field%3D_raw%20%22%5Cw%7B3%7D%5Cs%5Cd%7B2%7D%5Cs%5Cd%7B2%7D%3A%5Cd%7B2%7D%3A%5Cd%7B2%7D%5Cs%5Cw%2B%5Cs%5Cw.*%5C%5B%5Cd%2B%5C%5D%3A%5Cs(%3F%3CConnection_Type%3E%5Cw%2B)%5Cs.*%5C%5B(%3F%3CClient_IP%3E%5Cd%7B1%2C3%7D.%5Cd%7B1%2C3%7D.%5Cd%7B1%2C3%7D.%5Cd%7B1%2C3%7D)%5C%5D.*%22%0A%7C%20rex%20field%3D_raw%20%22%5C%3C(%3F%3CEmail_Address%3E%5Cw.*)%5C%3E%2C.*%22%0A%7C%20transaction%20maxspan%3D1h%20startswith%3Dconnect%20endswith%3Ddisconnect%0A%7C%20search%20*$user$*%0A%7C%20eval%20Action%3Dif(isnull(mvfind(Connection_Type%2C%22lost%22))%2C%22Success%22%2C%22Failure%22)%0A%7C%20search%20Action%3D$action$%0A%7C%20table%20_time%20host%20Client_IP%20Connection_Type%20Email_Address%20Action%20_raw&amp;earliest=$field1.earliest$&amp;latest=$field1.latest$</link>
+        </drilldown>
+      </table>
+    </panel>
+    <panel>
+      <title>Dovecot Logs</title>
+      <input type="text" token="action2" searchWhenChanged="true">
+        <label>Action (Failure or Success)</label>
+        <default>*</default>
+      </input>
+      <table>
+        <search>
+          <query>index=main source=/var/log/mail.log host=*$host$*
+| rex field=_raw "\w{3}\s\d{2}\s\d{2}:\d{2}:\d{2}\s(?&lt;Host_Name&gt;\w+)\s(?&lt;Process_Name&gt;\w+)\:\s(?&lt;Dovecot_Process&gt;\w.*):\s(?&lt;Connection_Type&gt;\w+):\s"
+| search Process_Name="dovecot"
+| rex field=_raw "user=(?&lt;username&gt;.*)&gt;,.*rip=(?&lt;Client_IP&gt;\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3}),\slip=(?&lt;Target_IP&gt;\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3})"
+| eval User_Name=replace(username,"&lt;","")
+| transaction maxspan=30s startswith=Login endswith=Disconnected
+| search *$user$*
+| eval Action=if(isnull(mvfind(Connection_Type,"Login")),"Failure","Success")
+| search Action=$action2$
+| rename User_Name AS User
+| table _time Action host Client_IP Target_IP User</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <link target="_blank">search?q=index%3Dmain%20source%3D%2Fvar%2Flog%2Fmail.log%0A%7C%20search%20host%3D*$host$*%0A%7C%20rex%20field%3D_raw%20%22%5Cw%7B3%7D%5Cs%5Cd%7B2%7D%5Cs%5Cd%7B2%7D%3A%5Cd%7B2%7D%3A%5Cd%7B2%7D%5Cs(%3F%3CHost_Name%3E%5Cw%2B)%5Cs(%3F%3CProcess_Name%3E%5Cw%2B)%5C%3A%5Cs(%3F%3CDovecot_Process%3E%5Cw.*)%3A%5Cs(%3F%3CConnection_Type%3E%5Cw%2B)%3A%5Cs%22%0A%7C%20rex%20field%3D_raw%20%22user%3D(%3F%3Cusername%3E.*)%3E%2C.*rip%3D(%3F%3CClient_IP%3E%5Cd%7B1%2C3%7D.%5Cd%7B1%2C3%7D.%5Cd%7B1%2C3%7D.%5Cd%7B1%2C3%7D)%2C%5Cslip%3D(%3F%3CTarget_IP%3E%5Cd%7B1%2C3%7D.%5Cd%7B1%2C3%7D.%5Cd%7B1%2C3%7D.%5Cd%7B1%2C3%7D)%22%0A%7C%20eval%20User_Name%3Dreplace(username%2C%22%3C%22%2C%22%22)%0A%7C%20transaction%20maxspan%3D30s%20startswith%3DLogin%20endswith%3DDisconnected%0A%7C%20search%20*$user$*%0A%7C%20eval%20Action%3Dif(isnull(mvfind(Connection_Type%2C%22Login%22))%2C%22Failure%22%2C%22Success%22)%0A%7C%20search%20Action%3D$action2$%0A%7C%20table%20_time%20host%20Client_IP%20Target_IP%20Connection_Type%20User_Name%20Action%20_raw&amp;earliest=$field1.earliest$&amp;latest=$field1.latest$</link>
+        </drilldown>
+      </table>
+    </panel>
+    <panel>
+      <title>HTTP Logs</title>
+      <input type="text" token="action3" searchWhenChanged="true">
+        <label>Action (Failure or Success)</label>
+        <default>*</default>
+      </input>
+      <input type="text" token="path" searchWhenChanged="true">
+        <label>HTTP Request Path</label>
+        <default>*</default>
+      </input>
+      <table>
+        <search>
+          <query>index=main source="/var/log/*access.log*" NOT("*Splunk Website Monitoring*") host=*$host$*
+| rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
+| search HTTP_Request_Method=GET AND HTTP_Request="-"
+| search HTTP_Request_Path=*$path$*
+| eval Action=if((HTTP_Response_Code&gt;=200 AND HTTP_Response_Code&lt;300),"Successful","Failure")
+| rename HTTP_Response_Code AS Code HTTP_Request_Path AS Request
+| table _time host Action Client_IP Code Request</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>SSH Connections</title>
+      <chart>
+        <search>
+          <query>index=main source=/var/log/auth.log ("Failed password" OR "Accepted password") host=*$host$*
+| rex field=_raw "^[^\]\n]*\]:\s+(?P&lt;TYPE&gt;\w+) password for (?&lt;USER&gt;\w+) from (?&lt;IPADDR&gt;[^ ]+)" 
+| search USER=$user$
+| timechart count by TYPE
+| append 
+    [ search index=main source=/var/log/auth.log ("Failed password" OR "Accepted password") host=*$host$*
+    | rex field=_raw "^[^\]\n]*\]:\s+(?P&lt;TYPE&gt;\w+) password for (?&lt;USER&gt;\w+) from (?&lt;IPADDR&gt;[^ ]+)" 
+    | search USER=$user$
+    | timechart count by USER]</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">Failed,Accepted</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>DNS Connections</title>
+      <chart>
+        <search>
+          <query>index=main source="/var/log/named/messages" host=*$host$*
+| rex field=_raw "\d{2}\-\w{3}\-\d{4}\s\d{2}\:\d{2}\:\d{2}\.\d{1,3}\s(?&lt;Connected_As&gt;\w+)\s.*\s(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\#\d+\s\((?&lt;Query_Request&gt;\w.*)\)\:\s.*\'(?&lt;Server_Query&gt;\w.*)\/(?&lt;Record_Type&gt;\w+)\/(?&lt;IDEK&gt;\w+)\'\s(?&lt;Failure_Reason&gt;\w+)"
+| search (Query_Request=*$query$* OR Server_Query=*$query$*)
+| timechart count by Query_Request useother=false
+| append 
+    [search index=main host=windows source="C:\\dns.log" host=*$host$*
+    | rex field=_raw "\d{2}\/\d{2}\/\d{4}\s\d{1,2}:\d{1,2}:\d{1,2}\s\w{2}.*\s(?&lt;Protocol&gt;\w+)\s(?&lt;Dir&gt;\w+)\s(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s.*\s(?&lt;Error&gt;\w+)\]\s(?&lt;Record_Type&gt;\w+).*\s(?&lt;Query_Request&gt;\(\w.*\))\s"
+    | rex field=Query_Request mode=sed "s/\(\d+\)/./g"
+    | search Dir="Snd" AND $filterDnsNoise$
+    | eval Failure_Reason=case(Error="NOERROR","No Error",Error="FORMERR","Request Format Error",Error="SERVFAIL","Timeout/Internal DNS Server Error",Error="NXDOMAIN","A name that should exist, does not",Error="NOTIMP","DNS Server Doesn’t Support the Operation Code",Error="REFUSED","DNS Server Refuses to Perform the Update",Error="YXDOMAIN","A name that should not exist does exist",Error="YXRRSET","A resource record set that should not exist does exist",Error="NXRRSET","A resource record set that should exist does not exist",Error="NOTAUTH","DNS server is not authoritative for the zone",Error="NOTZONE","A name used is not within the specified zone")
+    | timechart count by Query_Request useother=false]</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.size">small</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>SSH Logs</title>
+      <input type="text" token="filter2" searchWhenChanged="true">
+        <label>Audit Type (Failed|Accepted|Invalid)</label>
+        <default>*</default>
+        <initialValue>*</initialValue>
+      </input>
+      <table>
+        <search>
+          <query>index=main source=/var/log/auth.log  host=*$host$*
+| rex field=_raw "\w{3}\s\d{2}\s\d{2}:\d{2}:\d{2}\s(?&lt;Host_Name&gt;\w+)\s(?&lt;Process_Name&gt;\w+).*\:\s(?&lt;Authentication_Result&gt;\w.+)\sfor(?&lt;Reason&gt;.*)\s(?&lt;User_Name&gt;\w+)\sfrom\s(?&lt;Source_IP&gt;\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3})\sport\s(?&lt;Source_Port&gt;\d{1,6})\s(?&lt;Proc&gt;\w+)"
+| search Process_Name="sshd"
+| search User_Name=$user$ 
+| search Authentication_Result=*$filter2$* OR Reason=*$filter2$*
+| search Authentication_Result IN("Failed password","Accepted password","maximum authentication attempts exceeded")
+| eval Invalid_User=if(Reason=" invalid user","True","False")
+| table _time,Authentication_Result,Host_Name,Source_IP, User_Name,Invalid_User</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>DNS Logs (C:\\dns.log and /var/log/named/messages)</title>
+      <input type="text" token="query" searchWhenChanged="true">
+        <label>Request Query</label>
+        <default>*</default>
+        <initialValue>*</initialValue>
+      </input>
+      <input type="checkbox" token="filterDns" searchWhenChanged="true">
+        <label>Filter Record Type</label>
+        <choice value="A">A Records Only</choice>
+        <choice value="*">All Records</choice>
+        <default>A</default>
+        <initialValue>A</initialValue>
+      </input>
+      <input type="checkbox" token="filterDnsNoise" searchWhenChanged="true">
+        <label>Filter Query Noise</label>
+        <choice value="Query_Request!=&quot;*addr.arpa*&quot; AND Query_Request!=&quot;*msdcs*&quot; AND Query_Request!=&quot;*DomainDnsZones*&quot; AND Query_Request!=&quot;*ForestDnsZones*&quot; AND Query_Request!=&quot;*blackhole*&quot; AND Query_Request!=&quot;*_kpasswd*&quot; AND Query_Request!=&quot;*_kerberos*&quot; AND Query_Request!=&quot;*_gc._tcp.*&quot; AND Query_Request!=&quot;*_ldap._tcp*&quot; AND Query_Request!=&quot;*-ms-*&quot; AND Query_Request!=&quot;*isatap.*&quot;">Yes</choice>
+        <choice value="Query_Request=***">No</choice>
+        <delimiter> </delimiter>
+        <default>"Query_Request!=""*addr.arpa*"" AND Query_Request!=""*msdcs*"" AND Query_Request!=""*DomainDnsZones*"" AND Query_Request!=""*ForestDnsZones*"" AND Query_Request!=""*blackhole*"" AND Query_Request!=""*_kpasswd*"" AND Query_Request!=""*_kerberos*"" AND Query_Request!=""*_gc._tcp.*"" AND Query_Request!=""*_ldap._tcp*"" AND Query_Request!=""*-ms-*"" AND Query_Request!=""*isatap.*"""</default>
+        <initialValue>Query_Request!="*addr.arpa*" AND Query_Request!="*msdcs*" AND Query_Request!="*DomainDnsZones*" AND Query_Request!="*ForestDnsZones*" AND Query_Request!="*blackhole*" AND Query_Request!="*_kpasswd*" AND Query_Request!="*_kerberos*" AND Query_Request!="*_gc._tcp.*" AND Query_Request!="*_ldap._tcp*" AND Query_Request!="*-ms-*" AND Query_Request!="*isatap.*"</initialValue>
+      </input>
+      <table>
+        <search>
+          <query>index=main source="/var/log/named/messages" host=*$host$*
+| rex field=_raw "\d{2}\-\w{3}\-\d{4}\s\d{2}\:\d{2}\:\d{2}\.\d{1,3}\s(?&lt;Connected_As&gt;\w+)\s.*\s(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\#\d+\s\((?&lt;Query_Request&gt;\w.*)\)\:\s.*\'(?&lt;Server_Query&gt;\w.*)\/(?&lt;Record_Type&gt;\w+)\/(?&lt;IDEK&gt;\w+)\'\s(?&lt;Failure_Reason&gt;\w+)"
+| where Connected_As="client"
+| search Query_Request=*$query$*
+| search Record_Type=$filterDns$
+| search $filterDnsNoise$
+| table _time host Client_IP Record_Type Query_Request Failure_Reason
+| append 
+    [search index=main source="C:\\dns.log" host=*$host$*
+    | rex field=_raw "\d{2}\/\d{2}\/\d{4}\s\d{1,2}:\d{1,2}:\d{1,2}\s\w{2}.*\s(?&lt;Protocol&gt;\w+)\s(?&lt;Dir&gt;\w+)\s(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s.*\s(?&lt;Error&gt;\w+)\]\s(?&lt;Record_Type&gt;\w+).*\s(?&lt;Query_Request&gt;\(\w.*\))\s"
+    | rex field=Query_Request mode=sed "s/\(\d+\)/./g"
+    | search Dir="Snd"
+    | search Query_Request=*$query$*
+    | search Record_Type=$filterDns$
+    | search $filterDnsNoise$
+    | eval Failure_Reason=case(Error="NOERROR","No Error",Error="FORMERR","Request Format Error",Error="SERVFAIL","Timeout/Internal DNS Server Error",Error="NXDOMAIN","A name that should exist, does not",Error="NOTIMP","DNS Server Doesn’t Support the Operation Code",Error="REFUSED","DNS Server Refuses to Perform the Update",Error="YXDOMAIN","A name that should not exist does exist",Error="YXRRSET","A resource record set that should not exist does exist",Error="NXRRSET","A resource record set that should exist does not exist",Error="NOTAUTH","DNS server is not authoritative for the zone",Error="NOTZONE","A name used is not within the specified zone")
+    | table _time host Client_IP Record_Type Query_Request Failure_Reason]</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <drilldown>
+          <link target="_blank">search?q=index%3Dmain%20source%3D%22%2Fvar%2Flog%2Fnamed%2Fmessages%22%0A%7C%20search%20host%3D*$host$*%0A%7C%20rex%20field%3D_raw%20%22%5Cd%7B2%7D%5C-%5Cw%7B3%7D%5C-%5Cd%7B4%7D%5Cs%5Cd%7B2%7D%5C%3A%5Cd%7B2%7D%5C%3A%5Cd%7B2%7D%5C.%5Cd%7B1%2C3%7D%5Cs(%3F%3CConnected_As%3E%5Cw%2B)%5Cs.*%5Cs(%3F%3CClient_IP%3E%5Cd%7B1%2C3%7D%5C.%5Cd%7B1%2C3%7D%5C.%5Cd%7B1%2C3%7D%5C.%5Cd%7B1%2C3%7D)%5C%23%5Cd%2B%5Cs%5C((%3F%3CQuery_Request%3E%5Cw.*)%5C)%5C%3A%5Cs.*%5C'(%3F%3CServer_Query%3E%5Cw.*)%5C%2F(%3F%3CRecord_Type%3E%5Cw%2B)%5C%2F(%3F%3CIDEK%3E%5Cw%2B)%5C'%5Cs(%3F%3CFailure_Reason%3E%5Cw%2B)%22%0A%7C%20search%20(Query_Request%3D*$query$*%20OR%20Server_Query%3D*$query$*)&amp;earliest=$field1.earliest$&amp;latest=$field1.latest$</link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Orange Team/User Logs</title>
+      <table>
+        <title>HTTP / Web Requests</title>
+        <search>
+          <query>index=main source="/var/log/*access.log*" NOT("*Splunk Website Monitoring*") host=*$host$*
+| rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
+| rex field=_raw "\"(?&lt;HTTP_Method&gt;\w+):\/\/(?&lt;Target_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?&lt;HTTP_Request_URL&gt;.*)\"\s\""
+| search HTTP_Request!="-"
+| rename HTTP_Response_Code AS Code HTTP_Request_Method AS Method | table _time host Target_IP Client_IP Code Method HTTP_Request</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>RDP Logs ( NO SERVICE/TERMINAL LOGINS OK)</title>
+      <input type="text" token="audit_type" searchWhenChanged="true">
+        <label>Audit Type</label>
+        <default>*</default>
+      </input>
+      <table>
+        <search>
+          <query>index=main source="wineventlog:security" (((EventCode=4624 AND Account_Name!="-") OR EventCode=4778) AND Logon_Type=10) OR (EventCode=4625  AND (Workstation_Name!="" OR Source_Network_Address!=""))  host=$host$*
+| search Keywords=*$audit_type$*
+| eval Subject_Account=mvindex(Account_Name,0)
+| eval Target_Account=mvindex(Account_Name,1)
+| search Target_Account=*$user$* OR Subject_Account=*$user$*
+| eval Failure_Code=case(Sub_Status=="0xC0000064","Username doesnt exist",Sub_Status=="0xC000006A","Username is correct but password is wrong",Sub_Status=="0xC0000234","User is locked out",Sub_Status=="0xC0000072","Account is disabled", Sub_Status=="0xC000006F", "User logged in outside of time or day restrictions", Sub_Status=="0xC0000070","Workstation restriction",Sub_Status=="0xC0000193","Account Expiration",Sub_Status=="0xC0000071","Expired Password",Sub_Status=="0xC0000133","Clocks are out of sync",Sub_Status=="0xC0000224","User is required to change password at next login",Sub_Status=="0xC0000225","Windows Bug (No Risk)",Sub_Status=="0xC000015b","User has not been granted the login type right on this machine")
+| eval Remote_Address=if(Source_Network_Address=="-",Workstation_Name,Source_Network_Address) 
+| table _time, Keywords,Failure_Code, ComputerName, Subject_Account, Target_Account, Remote_Address, Process_Name</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>User Logins to Database</title>
+      <chart>
+        <search>
+          <query>index=main source=/var/log/mysql/query.log
+| rex field=_raw "\s\d{1,3}\sInit\sDB\s(?&lt;DB&gt;.*)"
+| rex field=_raw "\s\d{1,3}\sQuery\sUSE\s(?&lt;Database&gt;.*)"   
+| eval Database=coalesce(DB,Database)
+| transaction startswith=Connect endswith=Quit
+| timechart count by Database usenull=false
+| append 
+    [search index=main source=/var/log/mysql/query.log
+    | rex field=_raw "\s\d{1,3}\sConnect\s(?&lt;User&gt;\w+)@(?&lt;Remote_Address&gt;\w+)\son"
+    | transaction startswith=Connect endswith=Quit
+    | eval User=User+"_"
+    | timechart count by User usenull=false]</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.axisY2.abbreviation">none</option>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.chart.overlayFields">dvwa</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Top Commands Executed</title>
+      <chart>
+        <search>
+          <query>index=main source=/var/log/mysql/query.log
+| rex field=_raw "\s\d{1,3}\sQuery\s(?&lt;Command&gt;.*)"
+| rex field=Command "^(?&lt;Query&gt;\w+)\s(?&lt;Parameters&gt;.*)"
+| eval Query=upper(Query)
+| transaction startswith=Connect endswith=Quit
+| chart count by Query</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Commands Executed By User Over Time</title>
+      <chart>
+        <search>
+          <query>index=main source=/var/log/mysql/query.log
+| rex field=_raw "\s\d{1,3}\sQuery\s(?&lt;Command&gt;.*)"
+| eval Command=upper(Command)
+| transaction startswith=Connect endswith=Quit
+| timechart count by Command useother=false
+| append 
+    [search index=main source=/var/log/mysql/query.log
+    | rex field=_raw "\s\d{1,3}\sConnect\s(?&lt;User&gt;\w+)@(?&lt;Remote_Address&gt;\w+)\son"
+    | transaction startswith=Connect endswith=Quit
+    | timechart count by User]</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">dvwa</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>MySQL Database Logs</title>
+      <table>
+        <search>
+          <query>index=main source=/var/log/mysql/query.log
+| rex field=_raw "\s\d{1,3}\sConnect\s(?&lt;User&gt;\w+)@(?&lt;Remote_Address&gt;\w+)\son"
+| rex field=_raw "\s\d{1,3}\sQuery\s(?&lt;Command&gt;.*)"
+| rex field=Command "^(?&lt;Query&gt;\w+)\s(?&lt;Parameters&gt;.*)"
+| transaction startswith=Connect endswith=Quit
+| table _time host Remote_Address User _raw</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>
