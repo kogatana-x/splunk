@@ -4,7 +4,7 @@
 ## Installing Splunk Server
 ### Downloading Splunk
 1. Download the package on any Linux VM
-`cd /opt`
+- `cd /opt`
 ##### Debian-based
 - 	`wget -O splunk.deb https://download.splunk.com/products/splunk/releases/9.0.1/linux/splunk-9.0.1-82c987350fde-linux-2.6-amd64.deb `
 -	`dpkg -i splunk.deb`
@@ -14,8 +14,8 @@
 
 ### Starting the Installation
 2. Install the server from the `/opt/splunk/bin/` folder:
- 	`./splunk start --accept license`
- 	`./splunk enable boot-start`
+- 	`./splunk start --accept license`
+- 	`./splunk enable boot-start`
 
 3. After the installation completes, navigate to the web interface IP & Login with the credentials 
  ![](images/1.png)
@@ -37,7 +37,7 @@
 | pfSense add-ons						| https://splunkbase.splunk.com/app/1527 	| 					|
 | Website Monitoring 					| https://splunkbase.splunk.com/app/1493 	| 					|
 | Pstree								| https://splunkbase.splunk.com/app/5721 	| N/A 				|
-| *Requirement for pstree pip3 install splunk-dev*  								| 					|
+| *Requirement for pstree* | *pip3 install splunk-dev*						|   					|
 
 ### Instructions for Installation
 1. Download whatever apps you want
@@ -94,4 +94,5 @@
  ![](images/18.png)
 3. Set the following parameters for both the linux and windows index
  ![](images/19.png)
-4. Set up forwarders w the following command: `./splunk add monitor / -index linux`
+4. Set up forwarders w the following command: 
+-`./splunk add monitor / -index linux`
