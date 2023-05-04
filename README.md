@@ -1,7 +1,7 @@
 # splunk
 > Repository for Splunk Guides and Dashboards i made \
 \
-![](meme.png)
+![](blob/main/meme.png)
 ## Usage Guide:
 > Navigate to the branch you wish to view - 
 ### Guides
