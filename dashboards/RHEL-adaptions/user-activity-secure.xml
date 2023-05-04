@@ -1,0 +1,253 @@
+<form version="1.1" theme="dark">
+  <label>User Login Activity Summary (Windows and Linux)</label>
+  <fieldset submitButton="false">
+    <input type="time" token="field1">
+      <label></label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="source" searchWhenChanged="true">
+      <label>Source IP</label>
+      <default>*</default>
+      <prefix>*</prefix>
+      <suffix>*</suffix>
+      <initialValue>*</initialValue>
+    </input>
+    <input type="text" token="host" searchWhenChanged="true">
+      <label>Target Host</label>
+      <default>*</default>
+      <prefix>*</prefix>
+      <suffix>*</suffix>
+      <initialValue>*</initialValue>
+    </input>
+    <input type="text" token="user" searchWhenChanged="true">
+      <label>User</label>
+      <default>*</default>
+      <prefix>*</prefix>
+      <suffix>*</suffix>
+      <initialValue>*</initialValue>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Identify Spike in User Logins (Failed or Success)</title>
+      <chart>
+        <title>WINDOWS</title>
+        <search>
+          <query>index=main source="wineventlog:security" ((EventCode=4624 AND Account_Name!="-") OR EventCode=4625 OR EventCode=4778 OR EventCode=4801) host=$host$
+| search Source_Network_Address=$source$    
+| eval type=if(Keywords="Audit Success","Success","Failure")
+| timechart count by type
+| append 
+    [ search index=main source="wineventlog:security" ((EventCode=4624 AND Account_Name!="-") OR EventCode=4625 OR EventCode=4778 OR EventCode=4801) host=$host$
+    | eval Subject_Account=mvindex(Account_Name,0)
+    | eval Target_Account=mvindex(Account_Name,1)
+    | search Target_Account=$user$ OR Subject_User=$user$
+    | timechart count by Target_Account]</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">Failure,Success</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Login Types</title>
+      <chart>
+        <title>WINDOWS</title>
+        <search>
+          <query>index=main source="wineventlog:security" ((EventCode=4624 AND Account_Name!="-") OR EventCode=4625 OR EventCode=4778 OR EventCode=4801) host=$host$ Source_Network_Address=$source$
+| eval Login_Type= case(Logon_Type==2,"Interactive (2)", Logon_Type==3,"Network (3)",Logon_Type==4,"Batch (4) e.g. schedule task",Logon_Type==5,"Service (5)",Logon_Type==7,"Unlock (7)",Logon_Type==8,"Network Cleartext (8) e.g. IIS",Logon_Type==10,"Remote Desktop (10)",Logon_Type==11,"Logon w cached creds (11)")
+| eval Subject_Account=mvindex(Account_Name,0)
+| eval Target_Account=mvindex(Account_Name,1)
+| search Target_Account=$user$ OR Subject_User=$user$
+| chart count by Login_Type</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Windows Login Session Time</title>
+      <table>
+        <title>WINDOWS</title>
+        <search>
+          <query>index=main source="wineventlog:security" ((EventCode=4624 AND Account_Name!="-") OR EventCode=4625 OR EventCode=4778 OR EventCode=4801) host=$host$ Source_Network_Address=$source$
+| eval Subject_Account=mvindex(Account_Name,0)
+| eval Target_Account=mvindex(Account_Name,1)
+| search Target_Account=$user$ OR Subject_User=$user$
+| transaction SPORT
+| eval Session_Time=tostring(strptime(mvindex(Time,1),"%b %d %T")-strptime(mvindex(Time,0),"%b %d %T"),"duration")
+| search Client_IP=$source$ AND USER=$user$
+| table host Target_IP Client_IP USER Session_Time
+| sort -Session_Time</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Identify Spike by User (Failed or Success)</title>
+      <chart>
+        <title>LINUX</title>
+        <search>
+          <query>index=main (source=/var/log/auth.log OR source=/var/log/secure) ("Failed password" OR "Accepted password") host=$host$
+| rex field=_raw "^[^\]\n]*\]:\s+(?P&lt;TYPE&gt;\w+) password for (?&lt;USER&gt;\w+) from (?&lt;IPADDR&gt;[^ ]+)" 
+| search IPADDR=$source$
+| timechart count by TYPE
+| append 
+    [ search index=main source=/var/log/auth.log OR source=/var/log/secure ("Failed password" OR "Accepted password") host=$host$
+    | rex field=_raw "^[^\]\n]*\]:\s+(?P&lt;TYPE&gt;\w+) password for (?&lt;USER&gt;\w+) from (?&lt;IPADDR&gt;[^ ]+)" 
+    | search IPADDR=$source$ AND USER=$user$
+    | timechart count by USER]</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">Failed,Accepted</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.stackMode">stacked100</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>SSH Session Time</title>
+      <table>
+        <search>
+          <query>index=main source=/var/log/auth.log OR source=/var/log/secure host=$host$
+| rex field=_raw "^(?&lt;Time&gt;\w{3}.*\d{1,2}\s\d{2}:\d{2}:\d{2})\s(?&lt;HOST&gt;\w+)\s(?&lt;PROC&gt;\w+)\[(?&lt;PID&gt;\d+)\]:\s(?&lt;Connection_Type&gt;\w.*)\sfrom\s"
+| rex field=_raw "from\s(?&lt;Client_IP&gt;\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3})\sport\s(?&lt;SPORT&gt;\d+)\son\s(?&lt;Target_IP&gt;\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3})\sport\s(?&lt;DPORT&gt;\d+)"
+| rex field=_raw "from\suser\s(?&lt;USER&gt;\w+)\s(?&lt;Client_IP&gt;\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3})\sport\s(?&lt;SPORT&gt;\d+)"
+| transaction SPORT
+| eval Session_Time=tostring(strptime(mvindex(Time,1),"%b %d %T")-strptime(mvindex(Time,0),"%b %d %T"),"duration")
+| table host Target_IP Client_IP USER Session_Time
+| sort -Session_Time</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Session_Time">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>LINUX LOGS</title>
+      <input type="checkbox" token="filter2" searchWhenChanged="true">
+        <label>Audit Type -</label>
+        <choice value="Accepted">Success</choice>
+        <choice value="Failed">Failed</choice>
+        <default>Accepted,Failed</default>
+        <initialValue>Accepted,Failed</initialValue>
+        <delimiter> OR </delimiter>
+        <prefix>Result=</prefix>
+      </input>
+      <table>
+        <title>User Logins by Host</title>
+        <search>
+          <query>index=main source=/var/log/auth.log OR source=/var/log/secure host=$host$
+| rex field=_raw "^(?&lt;Time&gt;\w{3}.*\d+\s\d{2}:\d{2}:\d{2})\s(?&lt;Host_Name&gt;\w+)\s(?&lt;Process_Name&gt;\w+)\[(?&lt;PID&gt;\d+)\]:\s(?&lt;Result&gt;\w+)\s"
+| search $filter2$
+| rex field=_raw "\sfor\s(?&lt;User_Name&gt;\w+)\sfrom\s(?&lt;Source_IP&gt;\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3})\sport\s(?&lt;PORT&gt;\d+)"
+| search User_Name=$user$ AND Source_IP=$source$
+| table _time,host,Source_IP,User_Name,Result</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Authentication_Result">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <format type="color" field="Result">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>Login Processes</title>
+      <chart>
+        <title>LINUX</title>
+        <search>
+          <query>index=main source=/var/log/auth.log OR source=/var/log/secure host=$host$
+| rex field=_raw "^(?&lt;Time&gt;\w{3}.*\d+\s\d{2}:\d{2}:\d{2})\s(?&lt;Host_Name&gt;\w+)\s(?&lt;Process_Name&gt;\w+)\[(?&lt;PID&gt;\d+)\]:\s(?&lt;Result&gt;\w+)\s"
+| rex field=_raw "\sfor\s(?&lt;User_Name&gt;\w+)\sfrom\s(?&lt;Source_IP&gt;\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3})\sport\s(?&lt;PORT&gt;\d+)"
+| search User_Name=$user$ AND Source_IP=$source$
+| chart count by Process_Name</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>WINDOWS LOGS</title>
+      <input type="text" token="audit_type" searchWhenChanged="true">
+        <label>Audit Type (Success or Failure)</label>
+        <default>*</default>
+      </input>
+      <table>
+        <title>User Logins by Host</title>
+        <search>
+          <query>index=main source="wineventlog:security" ((EventCode=4624 AND Account_Name!="-") OR EventCode=4625 OR EventCode=4778 OR EventCode=4801) host=$host$ Source_Network_Address=$source$
+| search Keywords=*$audit_type$*
+| eval Subject_Account=mvindex(Account_Name,0)
+| eval Target_Account=mvindex(Account_Name,1)
+| search Subject_Account=$user$ OR Target_Account=$user$
+| eval Login_Type= case(Logon_Type==2,"Interactive (2)", Logon_Type==3,"Network (3)",Logon_Type==4,"Batch (4) e.g. schedule task",Logon_Type==5,"Service (5)",Logon_Type==7,"Unlock (7)",Logon_Type==8,"Network Cleartext (8) e.g. IIS",Logon_Type==10,"Remote Desktop (10)",Logon_Type==11,"Logon w cached creds (11)")
+| table _time, Keywords, ComputerName, Subject_Account, Target_Account, Login_Type, Source_Network_Address, Process_Name</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <format type="color" field="Keywords">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Login Failure Reason</title>
+      <table>
+        <search>
+          <query>index=main source="wineventlog:security" EventCode=4625 host=$host$ Source_Network_Address=$source$
+| eval Subject_Account=mvindex(Account_Name,0)
+| eval Target_Account=mvindex(Account_Name,1)
+| search Subject_Account=$user$ OR Target_Account=$user$
+| eval Failure_Code=case(Sub_Status=="0xC0000064","Username doesnt exist",Sub_Status=="0xC000006A","Username is correct but password is wrong",Sub_Status=="0xC0000234","User is locked out",Sub_Status=="0xC0000072","Account is disabled", Sub_Status=="0xC000006F", "User logged in outside of time or day restrictions", Sub_Status=="0xC0000070","Workstation restriction",Sub_Status=="0xC0000193","Account Expiration",Sub_Status=="0xC0000071","Expired Password",Sub_Status=="0xC0000133","Clocks are out of sync",Sub_Status=="0xC0000224","User is required to change password at next login",Sub_Status=="0xC0000225","Windows Bug (No Risk)",Sub_Status=="0xC000015b","User has not been granted the login type right on this machine")
+| table _time, ComputerName, Subject_Account, Target_Account, Source_Network_Address, Failure_Code</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>
