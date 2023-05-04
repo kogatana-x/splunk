@@ -15,7 +15,7 @@
 ## Installing The Forwarders
 - `./splunk start --accept-license`
 - `./splunk enable boot-start`
-- `./splunk add forward-server 10.30.30.121:9997`
+- `./splunk add forward-server x.x.x.x:9997`
 - `./splunk add monitor /var/log/`
 - `./splunk restart`
 
@@ -32,11 +32,14 @@
 
 4. Restart the service.
 
+## Easy Search To See Forwarders:
+- `index=main | stats count(_raw) by host`
+- 
 ## Web monitoring input
-- http://10.100.137.3:8000/en-US/app/website_monitoring/web_ping_batch_create
+- http://x.x.x.x:8000/en-US/app/website_monitoring/web_ping_batch_create
  ![](images/21.png)
 
-- http://10.100.137.3:8000/en-US/manager/website_monitoring/data/inputs/web_ping
+- http://x.x.x.x:8000/en-US/manager/website_monitoring/data/inputs/web_ping
   ![](images/21.png)
 
 
