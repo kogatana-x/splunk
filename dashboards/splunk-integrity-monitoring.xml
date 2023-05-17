@@ -31,7 +31,7 @@
           <latest>$field1.latest$</latest>
         </search>
         <option name="charting.chart">column</option>
-        <option name="charting.chart.overlayFields">succeeded</option>
+        <option name="charting.chart.overlayFields">succeeded,failed</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.drilldown">none</option>
       </chart>
