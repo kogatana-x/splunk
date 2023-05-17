@@ -25,7 +25,8 @@
 | timechart count by info
 | append 
     [search index="_audit" action="login attempt"
-    | timechart count by clientip limit=0]</query>
+    | eval Client=coalesce(clientip,src)
+    | timechart count by Client limit=0]</query>
           <earliest>$field1.earliest$</earliest>
           <latest>$field1.latest$</latest>
         </search>
@@ -41,7 +42,8 @@
         <title>Logins</title>
         <search>
           <query>index="_audit" action="login attempt"
-| table _time host clientip user info reason method useragent
+| eval Client=coalesce(clientip,src)
+| table _time Client user info useragent 
 | sort -time</query>
           <earliest>-24h@h</earliest>
           <latest>now</latest>
