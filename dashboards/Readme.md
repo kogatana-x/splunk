@@ -96,3 +96,6 @@
 - Target Host
 - User
 ### Example Dashboard Activity:
+  ![](images/windows/1.png)
+  ![](images/windows/2.png)
+  ![](images/windows/3.png)
