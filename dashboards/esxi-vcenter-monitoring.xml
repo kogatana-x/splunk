@@ -1,0 +1,235 @@
+<form version="1.1" theme="dark">
+  <label>ESXi + vCenter Monitoring</label>
+  <description>Custom fields for netlabs Search Tables and "VM Changes by User" using the fields below. The Filter Noise must have either "No Filter" checked or a combination of the other checkbox fields to work.</description>
+  <fieldset submitButton="false">
+    <input type="time" token="field1">
+      <label></label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="host" searchWhenChanged="true">
+      <label>Host</label>
+      <default>*</default>
+      <prefix>host=*</prefix>
+      <suffix>*</suffix>
+      <initialValue>*</initialValue>
+    </input>
+    <input type="text" token="username" searchWhenChanged="true">
+      <label>Username</label>
+      <default>*</default>
+      <prefix>Username=*</prefix>
+      <suffix>*</suffix>
+      <initialValue>*</initialValue>
+    </input>
+    <input type="text" token="vm_name" searchWhenChanged="true">
+      <label>VM_Name</label>
+      <default>*</default>
+      <prefix>VM_Name=*</prefix>
+      <suffix>*</suffix>
+      <initialValue>*</initialValue>
+    </input>
+    <input type="checkbox" token="noise" searchWhenChanged="true">
+      <label>Filter Noise</label>
+      <choice value="Username!=netlabs">Netlabs Default Service Username</choice>
+      <choice value="VM_Name!=*VM_Name*">VM_Name</choice>
+      <choice value="*">No Filter</choice>
+      <delimiter> AND </delimiter>
+      <default>Username!=netlabs</default>
+      <initialValue>Username!=netlabs</initialValue>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Netlab Pod Usage</title>
+      <chart>
+        <search>
+          <query>index=vmware-esxi
+| rex field=_raw "\&lt;(?&lt;Priority&gt;\d+)\&gt;\d{4}-\d{2}-\d{2}\w\d{2}:\d{2}:\d{2}.\d+\w\s(?&lt;Host&gt;\w.*)\s(?&lt;Service&gt;\w+):\s(?&lt;Level&gt;\w+)\s\w+\[(?&lt;PID&gt;\d+)\]\s\[.*\ssub=(?&lt;Sub&gt;\w.*)\sopID=(?&lt;opID&gt;.*)\suser=(?&lt;UserType&gt;\w+)\:(?&lt;FQDN&gt;.*)\]\s(?&lt;EverythingElse&gt;.*)"
+| rex field=EverythingElse "^(?&lt;Action&gt;\w.*)(\:\s|\s\()(?&lt;ActionInfo&gt;.*)\s('|\-\&gt;\s)(?&lt;Object&gt;.*)(\'|\))"
+| search Action!=NULL
+| rex field=FQDN "^(?&lt;Domain&gt;.*)\x5c(?&lt;Username&gt;.*)"
+| rex field=Sub "Vmsvc.vm:(?&lt;VM_Path&gt;.*)"
+| eval VM_Path=coalesce(VM_Path,Object) 
+| rex field=VM_Path "\/vmfs\/volumes\/.*\/(?&lt;Class_Name&gt;\w+\d{3})_.*_POD(?&lt;POD&gt;\d{1,2})_(?&lt;VM_Name&gt;.*).vmx"
+| timechart span=1h count by Class_Name usenull=f useother=f</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Individual Pod Usage</title>
+      <input type="text" token="class_name" searchWhenChanged="true">
+        <label>Class Name</label>
+        <default>*</default>
+        <prefix>Class_Name=*</prefix>
+        <suffix>*</suffix>
+        <initialValue>*</initialValue>
+      </input>
+      <chart>
+        <search>
+          <query>index=vmware-esxi
+| rex field=_raw "\&lt;(?&lt;Priority&gt;\d+)\&gt;\d{4}-\d{2}-\d{2}\w\d{2}:\d{2}:\d{2}.\d+\w\s(?&lt;Host&gt;\w.*)\s(?&lt;Service&gt;\w+):\s(?&lt;Level&gt;\w+)\s\w+\[(?&lt;PID&gt;\d+)\]\s\[.*\ssub=(?&lt;Sub&gt;\w.*)\sopID=(?&lt;opID&gt;.*)\suser=(?&lt;UserType&gt;\w+)\:(?&lt;FQDN&gt;.*)\]\s(?&lt;EverythingElse&gt;.*)"
+| rex field=EverythingElse "^(?&lt;Action&gt;\w.*)(\:\s|\s\()(?&lt;ActionInfo&gt;.*)\s('|\-\&gt;\s)(?&lt;Object&gt;.*)(\'|\))"
+| search Action!=NULL
+| rex field=FQDN "^(?&lt;Domain&gt;.*)\x5c(?&lt;Username&gt;.*)"
+| rex field=Sub "Vmsvc.vm:(?&lt;VM_Path&gt;.*)"
+| eval VM_Path=coalesce(VM_Path,Object) 
+| rex field=VM_Path "\/vmfs\/volumes\/.*\/(?&lt;Class_Name&gt;\w+\d{3})_.*_POD(?&lt;POD&gt;\d{1,2})_(?&lt;VM_Name&gt;.*).vmx"
+| search $class_name$
+| timechart span=1h count by POD usenull=f useother=f</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>VM State Heat Map</title>
+      <chart>
+        <search>
+          <query>index=vmware-esxi
+| rex field=_raw "\&lt;(?&lt;Priority&gt;\d+)\&gt;\d{4}-\d{2}-\d{2}\w\d{2}:\d{2}:\d{2}.\d+\w\s(?&lt;Host&gt;\w.*)\s(?&lt;Service&gt;\w+):\s(?&lt;Level&gt;\w+)\s\w+\[(?&lt;PID&gt;\d+)\]\s\[.*\ssub=(?&lt;Sub&gt;\w.*)\sopID=(?&lt;opID&gt;.*)\suser=(?&lt;UserType&gt;\w+)\:(?&lt;FQDN&gt;.*)\]\s(?&lt;EverythingElse&gt;.*)"
+| rex field=EverythingElse "^(?&lt;Action&gt;\w.*)(\:\s|\s\()(?&lt;ActionInfo&gt;.*)\s('|\-\&gt;\s)(?&lt;Object&gt;.*)(\'|\))"
+| search Action!=NULL 
+| rex field=ActionInfo "^(?&lt;FirstAction&gt;\w{2})\_(?&lt;SecondAction&gt;\w{5})\_(?&lt;ThirdAction&gt;\w.*)"
+| search FirstAction="VM"
+| rex field=FQDN "^(?&lt;Domain&gt;.*)\x5c(?&lt;Username&gt;.*)"
+| rex field=Sub "Vmsvc.vm:(?&lt;VM_Path&gt;.*)"
+| eval VM_Path=coalesce(VM_Path,Object) 
+| timechart count by ThirdAction</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>VM Changes By User</title>
+      <chart>
+        <title>Every 2hrs</title>
+        <search>
+          <query>index=vmware-esxi $host$
+| rex field=_raw "\&lt;(?&lt;Priority&gt;\d+)\&gt;\d{4}-\d{2}-\d{2}\w\d{2}:\d{2}:\d{2}.\d+\w\s(?&lt;Host&gt;\w.*)\s(?&lt;Service&gt;\w+):\s(?&lt;Level&gt;\w+)\s\w+\[(?&lt;PID&gt;\d+)\]\s\[.*\ssub=(?&lt;Sub&gt;\w.*)\sopID=(?&lt;opID&gt;.*)\suser=(?&lt;UserType&gt;\w+)\:(?&lt;FQDN&gt;.*)\]\s(?&lt;EverythingElse&gt;.*)"
+| rex field=EverythingElse "^(?&lt;Action&gt;\w.*)(\:\s|\s\()(?&lt;ActionInfo&gt;.*)\s('|\-\&gt;\s)(?&lt;Object&gt;.*)(\'|\))"
+| search Action!=NULL 
+| rex field=ActionInfo "^(?&lt;FirstAction&gt;\w{2})\_(?&lt;SecondAction&gt;\w{5})\_(?&lt;ThirdAction&gt;\w.*)"
+| search FirstAction="VM"
+| rex field=FQDN "^(?&lt;Domain&gt;.*)\x5c(?&lt;Username&gt;.*)"
+| search $noise$ 
+| search $username$
+| timechart span=2h count by Username
+| append 
+    [ search index=vmware-esxi $host$
+    |  rex field=_raw "\&lt;(?&lt;Priority&gt;\d+)\&gt;\d{4}-\d{2}-\d{2}\w\d{2}:\d{2}:\d{2}.\d+\w\s(?&lt;Host&gt;\w.*)\s(?&lt;Service&gt;\w+):\s(?&lt;Level&gt;\w+)\s\w+\[(?&lt;PID&gt;\d+)\]\s\[.*\ssub=(?&lt;Sub&gt;\w.*)\sopID=(?&lt;opID&gt;.*)\suser=(?&lt;UserType&gt;\w+)\:(?&lt;FQDN&gt;.*)\]\s(?&lt;EverythingElse&gt;.*)"
+    | rex field=EverythingElse "^(?&lt;Action&gt;\w.*)(\:\s|\s\()(?&lt;ActionInfo&gt;.*)\s('|\-\&gt;\s)(?&lt;Object&gt;.*)(\'|\))"
+    | search Action!=NULL 
+    | rex field=ActionInfo "^(?&lt;FirstAction&gt;\w{2})\_(?&lt;SecondAction&gt;\w{5})\_(?&lt;ThirdAction&gt;\w.*)"
+    | search FirstAction="VM"
+    | rex field=Sub "Vmsvc.vm:(?&lt;VM_Path&gt;.*)"
+    | eval VM_Path=coalesce(VM_Path,Object) 
+    |  rex field=VM_Path "\/vmfs\/volumes\/.*\/(?&lt;Class_Name&gt;\w+\d{3})_.*_POD(?&lt;POD&gt;\d{1,2})_(?&lt;VM_Name&gt;.*).vmx"    
+    | rex field=FQDN "^(?&lt;Domain&gt;.*)\x5c(?&lt;Username&gt;.*)"
+    | search $noise$ 
+    | search $username$
+    | search $vm_name$
+    | timechart span=2h count by VM_Name usenull=false useother=false]</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">netlabs,aandler,rhaley,ftapia,vatanasov</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>ESXi Logs</title>
+      <table>
+        <search>
+          <query>index=vmware-esxi $host$
+| rex field=_raw "\&lt;(?&lt;Priority&gt;\d+)\&gt;\d{4}-\d{2}-\d{2}\w\d{2}:\d{2}:\d{2}.\d+\w\s(?&lt;Host&gt;\w.*)\s(?&lt;Service&gt;\w+):\s(?&lt;Level&gt;\w+)\s\w+\[(?&lt;PID&gt;\d+)\]\s\[.*\ssub=(?&lt;Sub&gt;\w.*)\sopID=(?&lt;opID&gt;.*)\suser=(?&lt;UserType&gt;\w+)\:(?&lt;FQDN&gt;.*)\]\s(?&lt;EverythingElse&gt;.*)"
+| rex field=EverythingElse "^(?&lt;Action&gt;\w.*)(\:\s|\s\()(?&lt;ActionInfo&gt;.*)\s('|\-\&gt;\s)(?&lt;Object&gt;.*)(\'|\))"
+| search Action!=NULL
+| rex field=FQDN "^(?&lt;Domain&gt;.*)\x5c(?&lt;Username&gt;.*)"
+| rex field=Sub "Vmsvc.vm:(?&lt;VM_Path&gt;.*)"
+| eval VM_Path=coalesce(VM_Path,Object)
+| rex field=VM_Path "\/vmfs\/volumes\/.*\/(?&lt;VM_Name&gt;.*)"
+| search $username$ AND $noise$
+| rex field=VM_Path "\/vmfs\/volumes\/.*\/(?&lt;Class_Name&gt;\w+\d{3})_.*_POD(?&lt;POD&gt;\d{1,2})_(?&lt;VM_Name_Short&gt;.*).vmx"
+| search $vm_name$
+| table _time Host FQDN Action ActionInfo  VM_Name | sort -_time</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>vCenter Management Logins</title>
+      <table>
+        <title>Logs from the Management Interface (NOT vcenter.netsec.lab or vcenter.netsec.local)</title>
+        <search>
+          <query>index=vmware-vcenter $host$
+| rex field=_raw "\&lt;(?&lt;Priority&gt;\d+)\&gt;1\s(?&lt;Year&gt;\d{4})-(?&lt;Month&gt;\d{2})-(?&lt;Day&gt;\d{2})\w(?&lt;Time&gt;\d{1,2}:\d{1,2}:\d{1,2})-\d{2}:\d{2}\s(?&lt;Host&gt;\w.*)\s(?&lt;Service&gt;.*)\s-\s-\s-\s\s\d{4}-\d{2}-\d{2}\w\d{1,2}:\d{1,2}:\d{1,2}.\d{1,3}-\d{2}:\d{2}\s\[(?&lt;Context&gt;.*)\s\s(?&lt;Type&gt;\w+)\s\s(?&lt;Data&gt;.*)\s\sopId=]\sSession count for user \[after remove\]:\s(?&lt;FQDN&gt;.*)\sis\s(?&lt;RemainingSessions&gt;\d+).*"
+| search Data="com.vmware.cis.authorization.impl.AuthorizationManagerImpl"
+| eval Action=if(Context="VLSI-session-reaper","Logout","Login") 
+| rex field=FQDN "^(?&lt;Domain&gt;.*)\x5c(?&lt;Username&gt;.*)"
+| search $noise$ AND $username$
+| table _time Host FQDN Action RemainingSessions
+| sort -_time</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>vCenter Pod Usage</title>
+      <table>
+        <title>Logs from the Management Interface (NOT vcenter.netsec.lab or vcenter.netsec.local)</title>
+        <search>
+          <query>index=vmware-vcenter $host$
+| rex field=_raw "\&lt;(?&lt;Priority&gt;\d+)\&gt;1\s\d{4}-\d{2}-\d{2}\w\d{1,2}:\d{1,2}:\d{1,2}.\d+-\d{2}:\d{2}\s(?&lt;Host&gt;\w+)\s(?&lt;Service&gt;\w+)\s(?&lt;PID&gt;\d+)\s-\s-\s\sEvent\s\[(?&lt;EventID&gt;\d+)\]\s\[.*\]\s\[\d{4}-\d{2}-\d{2}\w\d{1,2}:\d{1,2}:\d{1,2}.\d+\w\]\s\[(?&lt;Context&gt;\w.*)\]\s\[(?&lt;Type&gt;\w+)\]\s(?&lt;FQDN2&gt;.*)\s\[(?&lt;Instance&gt;\w+)\]\s\[(?&lt;EventID2&gt;\d+)\]\s\[(?&lt;Description&gt;\w.*)(\.|\])"
+| search Context!=""
+| rex field=Description "^(?&lt;Action&gt;\w+)\s"
+| eval Action=case(MATCH(Description,"snapshot"),"Snapshot",Action="The","Other",1=1,Action)
+| rex field=Description "Reconfigured\s(?&lt;VM_Name1&gt;.*)\son\s(?&lt;Host_ESXi1&gt;.*)\sin"
+| rex field=Description "Alarm\s\'(?&lt;Alarm&gt;.*)\'\son\s(?&lt;VM_Name2&gt;.*)\schanged"
+| rex field=Description "The\sexecution\sstate\sof\sthe\svirtual\smachine\s(?&lt;VM_Name3&gt;.*)\son\shost\s(?&lt;Host_ESXi2&gt;.*),\sin"
+| rex field=Message "config.extraConfig\(\"(?&lt;Config&gt;.*)\"\).*:"
+| eval VM_Name=coalesce(VM_Name1,VM_Name2,VM_Name3)
+| eval Host_ESXi=coalesce(Host_ESXi1,Host_ESXi2)
+| eval FQDN=trim(FQDN2,"\[") | eval FQDN=trim(FQDN,"\]")
+| rex field=FQDN "^(?&lt;Domain&gt;.*)\x5c(?&lt;Username&gt;.*)"
+| search $noise$ AND $username$ AND $vm_name$
+| table _time FQDN VM_Name Host_ESXi Config Action Description
+| sort -_time</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+</form>
+
+<!-- SOURCE: ANNA ANDLER (c) 2023 | kogatana-x -->

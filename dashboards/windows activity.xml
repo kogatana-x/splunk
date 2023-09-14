@@ -1,0 +1,485 @@
+<form version="1.1" theme="dark">
+  <label>Windows Activity (Single Form Version)</label>
+  <description>(Note - id like to correlate logs to an ip address w the login logs but if multiple logins at once its not going work :\) This dashboard is also super thicc so be patient with it</description>
+  <fieldset submitButton="true" autoRun="false">
+    <input type="time" token="field1">
+      <label></label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="source" searchWhenChanged="true">
+      <label>Source IP</label>
+      <default>*</default>
+      <initialValue>*</initialValue>
+    </input>
+    <input type="text" token="host" searchWhenChanged="true">
+      <label>Target Host</label>
+      <default>*</default>
+      <initialValue>*</initialValue>
+    </input>
+    <input type="text" token="user" searchWhenChanged="true">
+      <label>User</label>
+      <default>*</default>
+      <initialValue>*</initialValue>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Group Membership (Local and Domain)</title>
+      <chart>
+        <title>Localgroup** shows failed attempts too :')</title>
+        <search>
+          <query>index=main source="xmlwineventlog:microsoft-windows-sysmon/operational" sourcetype="xmlwineventlog" EventID=1 host=*$host$*
+| eval _raw=replace(_raw,"'","")    
+| rex field=_raw "&lt;EventID&gt;(?&lt;EventID&gt;\d+)&lt;\/EventID&gt;.*&lt;Computer&gt;(?&lt;Computer&gt;\w.*)&lt;\/Computer&gt;&lt;Security\sUserID=(?&lt;UserID&gt;\w.*)\/&gt;&lt;\/System&gt;.*&lt;Data\sName=ProcessId&gt;(?&lt;ProcessID&gt;\d+).*&lt;Data Name=Image&gt;(?&lt;Image&gt;.*)&lt;\/Data&gt;&lt;Data Name=FileVersion&gt;.*&lt;\/Data&gt;&lt;Data Name=OriginalFileName&gt;(?&lt;OriginalFileName&gt;.*)&lt;\/Data&gt;&lt;Data Name=CommandLine&gt;(?&lt;CommandLine&gt;.*)&lt;\/Data&gt;&lt;Data Name=CurrentDirectory&gt;(?&lt;CurrentDirectory&gt;.*)&lt;\/Data&gt;&lt;Data Name=User&gt;(?&lt;User&gt;\w.*)&lt;\/Data&gt;&lt;Data Name=LogonGuid&gt;.*&lt;Data Name=ParentProcessId&gt;(?&lt;ParentProcessID&gt;\d+)&lt;\/Data&gt;&lt;Data Name=ParentImage&gt;(?&lt;ParentImage&gt;\w.*)&lt;\/Data&gt;&lt;Data Name=ParentCommandLine&gt;(?&lt;ParentCommandLine&gt;.*)&lt;\/Data&gt;&lt;Data Name=ParentUser&gt;(?&lt;ParentUser&gt;\w.*)&lt;\/Data&gt;"
+| where (Image="C:\Windows\System32\net1.exe" OR Image="C:\Windows\System32\net.exe") 
+| search CommandLine="*localgroup *\/add"
+| rex field=CommandLine "localgroup\s(?&lt;Group_Name&gt;\w+)\s(?&lt;User&gt;\w+)\s\/add"
+| search User=*$user$*
+| chart count(User) by Group_Name,User
+| append 
+    [search index=main source="wineventlog:security" (EventCode=4728 OR EventCode=4729 OR EventCode=4732 OR EventCode=4733 OR EventCode=4746 OR EventCode=4747 OR EventCode=4751 OR EventCode=4752 OR EventCode=4756 OR EventCode=4757 OR EventCode=4761 OR EventCode=4762) host=*$host$*
+    | eval Target_Account=mvindex(Account_Name,1) 
+    | rex field=Target_Account "^CN=(?&lt;User&gt;.*),CN"
+    | search User!="NULL" AND User=*$user$* 
+    | dedup Group_Name,Target_Account
+    | chart count(User) by Group_Name,User]</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>New User Accounts</title>
+      <chart>
+        <search>
+          <query>index=main source="wineventlog:security" (EventCode=4720) host=*$host$*
+| eval Target_Account=mvindex(Account_Name,1)
+| search Target_Account=*$user$* OR Subject_Account=*$user$*
+| chart count(Target_Account) by ComputerName,Target_Account</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>User Password Changes</title>
+      <chart>
+        <search>
+          <query>index=main source="wineventlog:security" (EventCode=4723 OR EventCode=4724) host=*$host$*
+| eval Subject_Account=mvindex(Account_Name,0)
+| eval Target_Account=mvindex(Account_Name,1)
+| search Target_Account=*$user$* OR Subject_Account=*$user$*
+| chart count by Target_Account</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>User &amp; Group  Activity</title>
+      <input type="text" token="audit_type1" searchWhenChanged="true">
+        <label>Audit Type</label>
+        <default>*</default>
+        <initialValue>*</initialValue>
+      </input>
+      <table>
+        <search>
+          <query>index=main source="wineventlog:security" (EventCode&gt;=4720 AND EventCode&lt;=4726) OR EventCode=4738 OR EventCode=4740 OR EventCode=4767 OR EventCode=4781 host=*$host$*
+| search Keywords=*$audit_type1$*
+| eval Subject_Account=mvindex(Account_Name,0)
+| eval Target_Account=mvindex(Account_Name,1)
+| search Target_Account=*$user$* OR Subject_Account=*$user$*
+| eval Action=case(EventCode==4720,"New Account Created",EventCode==4722,"New Account Enabled", EventCode==4723,"User Changed Their Own Password",EventCode==4724,"Privileged User Changed A User's Password",EventCode==4725,"User Account Disabled",EventCode==4726,"User Account Deleted",EventCode==4738,"User Account Changed",EventCode==4740,"User Account Locked Out",EventCode==4767,"User Account Unlocked",EventCode==4781,"User Name Changed")
+| rename Target_Account AS User
+| table _time, Keywords, ComputerName, Subject_Account, User, Action | sort -_time
+| append 
+    [ search index=main source="wineventlog:security" (EventCode&gt;=4727 AND EventCode&lt;=4735) OR EventCode=4737 OR (EventCode&gt;=4744 AND EventCode&lt;=4763) host=$host$*
+| search Keywords=*$audit_type1$*
+| eval Subject_Account=mvindex(Account_Name,0)
+| eval Target_Account=mvindex(Account_Name,1)
+| search Target_Account=*$user$* OR Subject_Account=*$user$*
+| rex field=Target_Account "^CN=(?&lt;User&gt;.*),CN"
+| eval Action=case(EventCode==4731,"Local Security Group Created",EventCode==4735,"Local Security Group Changed",EventCode==4734,"Local Security Group Deleted",EventCode==4732,"User Added to Local Security Group",EventCode==4733,"User Removed from Local Security Group",EventCode==4727,"Global Security Group Created",EventCode==4737,"Global Security Group Changed",EventCode==4730,"Global Security Group Deleted",EventCode==4728,"User Added to Global Security Group",EventCode==4729,"User Removed from Global Security Group",EventCode==4754,"Universal Security Group Created",EventCode==4755,"Universal Security Group Changed",EventCode==4758,"Universal Security Group Deleted",EventCode==4756,"User Added to Universal Security Group",EventCode==4757,"User Removed from Universal Security Group",EventCode==4744,"Local Distribution Group Created",EventCode==4745,"Local Distribution Group Changed",EventCode==4748,"Local Distribution Group Deleted",EventCode==4746,"User Added to Local Distribution Group",EventCode==4747,"User Removed from Local Distribution Group",EventCode==4749,"Global Distribution Group Created",EventCode==4750,"Global Distribution Group Changed",EventCode==4753,"Global Distribution Group Deleted",EventCode==4751,"User Added to Global Distribution Group",EventCode==4752,"User Removed from Global Distribution Group",EventCode==4759,"Universal Distribution Group Created",EventCode==4760,"Universal Distribution Group Changed",EventCode==4763,"Universal Distribution Group Deleted",EventCode==4761,"User Added to Universal Distribution Group",EventCode==4762,"User Removed from Universal Distribution Group")
+| table _time, Keywords, ComputerName, Group_Name, Subject_Account, User, Action
+    | sort -_time]</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Service Status Over Time</title>
+      <chart>
+        <search>
+          <query>index=main source="WinEventLog:System" EventCode=7035 OR EventCode=7036 
+| rex field=_raw "EventCode=(?&lt;Event_Code&gt;\d+)\nEventType=(?&lt;Event_Type&gt;\d+)\nComputerName=(?&lt;Computer_Name&gt;.*)\n.*\n.*\n.*\n.*\n.*\nOpCode=(?&lt;Op_Code&gt;.*).\nMessage=The\s(?&lt;Service_Name&gt;.*)\sservice\sentered\sthe\s(?&lt;Service_State&gt;\w+)\sstate."
+| transaction host Service_Name (Service_State startswith="stopped" endswith="running") 
+| timechart count by Service_Name useother=false
+| append 
+    [ search index=main source="WinEventLog:System" EventCode=7035 OR EventCode=7036 
+    | rex field=_raw "EventCode=(?&lt;Event_Code&gt;\d+)\nEventType=(?&lt;Event_Type&gt;\d+)\nComputerName=(?&lt;Computer_Name&gt;.*)\n.*\n.*\n.*\n.*\n.*\nOpCode=(?&lt;Op_Code&gt;.*).\nMessage=The\s(?&lt;Service_Name&gt;.*)\sservice\sentered\sthe\s(?&lt;Service_State&gt;\w+)\sstate." 
+    | transaction host Service_Name (Service_State startswith="stopped" endswith="running") 
+    | eval Result=case(mvindex(Service_State,0)="stopped","Running Service Stopped",mvindex(Service_State,1)!="NULL","Service Restarted",1=1,"Stopped Service Running") 
+    | timechart count by Result useother=false]</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisY2.abbreviation">none</option>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.axisY2.scale">linear</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.chart.overlayFields">"Stopped Service Running","Service Restarted","Running Service Stopped"</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">0</option>
+        <option name="trellis.size">small</option>
+        <option name="trellis.splitBy">Service_Name</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Service Status</title>
+      <table>
+        <search>
+          <query>index=main source="WinEventLog:System" EventCode=7035 OR EventCode=7036 host=$host$
+| rex field=_raw "EventCode=(?&lt;Event_Code&gt;\d+)\nEventType=(?&lt;Event_Type&gt;\d+)\nComputerName=(?&lt;Computer_Name&gt;.*)\n.*\n.*\n.*\n.*\n.*\nOpCode=(?&lt;Op_Code&gt;.*).\nMessage=The\s(?&lt;Service_Name&gt;.*)\sservice\sentered\sthe\s(?&lt;Service_State&gt;\w+)\sstate."
+| table _time host Service_Name Service_State
+| sort -_time</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Service Status</title>
+      <chart>
+        <search>
+          <query>index=main source="WinEventLog:System" EventCode=7035 OR EventCode=7036 host=$host$
+| rex field=_raw "EventCode=(?&lt;Event_Code&gt;\d+)\nEventType=(?&lt;Event_Type&gt;\d+)\nComputerName=(?&lt;Computer_Name&gt;.*)\n.*\n.*\n.*\n.*\n.*\nOpCode=(?&lt;Op_Code&gt;.*).\nMessage=The\s(?&lt;Service_Name&gt;.*)\sservice\sentered\sthe\s(?&lt;Service_State&gt;\w+)\sstate."
+| transaction host Service_Name (Service_State startswith="stopped" endswith="running") 
+| eval Result=case(mvindex(Service_State,0)="stopped","Running Service Stopped",mvindex(Service_State,1)!="NULL","Service Restarted",1=1,"Stopped Service Running") 
+| chart count by Result</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Executed Commands &amp; Processes</title>
+      <chart>
+        <search>
+          <query>index=main source="xmlwineventlog:microsoft-windows-sysmon/operational" sourcetype="xmlwineventlog" EventID=1 host=*$host$*
+| eval _raw=replace(_raw,"'","")    
+| rex field=_raw "&lt;EventID&gt;(?&lt;EventID&gt;\d+)&lt;\/EventID&gt;.*&lt;Computer&gt;(?&lt;Computer&gt;\w.*)&lt;\/Computer&gt;&lt;Security\sUserID=(?&lt;UserID&gt;\w.*)\/&gt;&lt;\/System&gt;.*&lt;Data\sName=ProcessId&gt;(?&lt;ProcessID&gt;\d+).*&lt;Data Name=Image&gt;(?&lt;Image&gt;.*)&lt;\/Data&gt;&lt;Data Name=FileVersion&gt;.*&lt;\/Data&gt;&lt;Data Name=OriginalFileName&gt;(?&lt;OriginalFileName&gt;.*)&lt;\/Data&gt;&lt;Data Name=CommandLine&gt;(?&lt;CommandLine&gt;.*)&lt;\/Data&gt;&lt;Data Name=CurrentDirectory&gt;(?&lt;CurrentDirectory&gt;.*)&lt;\/Data&gt;&lt;Data Name=User&gt;(?&lt;User&gt;\w.*)&lt;\/Data&gt;&lt;Data Name=LogonGuid&gt;.*&lt;Data Name=ParentProcessId&gt;(?&lt;ParentProcessID&gt;\d+)&lt;\/Data&gt;&lt;Data Name=ParentImage&gt;(?&lt;ParentImage&gt;\w.*)&lt;\/Data&gt;&lt;Data Name=ParentCommandLine&gt;(?&lt;ParentCommandLine&gt;.*)&lt;\/Data&gt;&lt;Data Name=ParentUser&gt;(?&lt;ParentUser&gt;\w.*)&lt;\/Data&gt;"
+| where ParentUser!="NT AUTHORITY\SYSTEM" AND Image!="C:\Program Files\Mozilla Firefox\firefox.exe" AND ParentImage!="-"
+| rex field=Image "\w:\\\.*\\\(?&lt;Executable&gt;.*)"
+| search User=*$user$* OR ParentUser=*$user$*
+| timechart count by Executable</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Commands Executed with Powershell or CMD</title>
+      <chart>
+        <search>
+          <query>index=main source="xmlwineventlog:microsoft-windows-sysmon/operational" sourcetype="xmlwineventlog" EventID=1  host=$host$*
+| eval _raw=replace(_raw,"'","")    
+| eval _raw=replace(_raw,"\"","")    
+| rex field=_raw "&lt;EventID&gt;(?&lt;EventID&gt;\d+)&lt;\/EventID&gt;.*&lt;Computer&gt;(?&lt;Computer&gt;\w.*)&lt;\/Computer&gt;&lt;Security\sUserID=(?&lt;UserID&gt;\w.*)\/&gt;&lt;\/System&gt;.*&lt;Data\sName=ProcessId&gt;(?&lt;ProcessID&gt;\d+).*&lt;Data Name=Image&gt;(?&lt;Image&gt;.*)&lt;\/Data&gt;&lt;Data Name=FileVersion&gt;.*&lt;\/Data&gt;&lt;Data Name=OriginalFileName&gt;(?&lt;OriginalFileName&gt;.*)&lt;\/Data&gt;&lt;Data Name=CommandLine&gt;(?&lt;CommandLine&gt;.*)&lt;\/Data&gt;&lt;Data Name=CurrentDirectory&gt;(?&lt;CurrentDirectory&gt;.*)&lt;\/Data&gt;&lt;Data Name=User&gt;(?&lt;User&gt;\w.*)&lt;\/Data&gt;&lt;Data Name=LogonGuid&gt;.*&lt;Data Name=ParentProcessId&gt;(?&lt;ParentProcessID&gt;\d+)&lt;\/Data&gt;&lt;Data Name=ParentImage&gt;(?&lt;ParentImage&gt;\w.*)&lt;\/Data&gt;&lt;Data Name=ParentCommandLine&gt;(?&lt;ParentCommandLine&gt;.*)&lt;\/Data&gt;&lt;Data Name=ParentUser&gt;(?&lt;ParentUser&gt;\w.*)&lt;\/Data&gt;"
+| rex field=ParentImage "\w:\\\.*\\\(?&lt;Parent_Executable&gt;.*)" 
+| rex field=CommandLine "\w:\\\.*\\\(?&lt;Executable&gt;.*)" 
+| search Parent_Executable="*cmd.exe*" OR Parent_Executable="*powershell.exe*" AND (Executable!="splunk.exe*" AND Parent_Executable="*powershell.exe*")
+| search User=*$user$* OR ParentUser=*$user$*
+| timechart count by Executable</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Executed Commands &amp; Processes</title>
+      <table>
+        <title>Blacklist: ParentUser="NT AUTHORITY\SYSTEM" AND Image="C:\Program Files\Mozilla Firefox\firefox.exe" AND ParentImage="-"</title>
+        <search>
+          <query>index=main source="xmlwineventlog:microsoft-windows-sysmon/operational" sourcetype="xmlwineventlog" EventID=1 host=*$host$*
+| eval _raw=replace(_raw,"'","")    
+| rex field=_raw "&lt;EventID&gt;(?&lt;EventID&gt;\d+)&lt;\/EventID&gt;.*&lt;Computer&gt;(?&lt;Computer&gt;\w.*)&lt;\/Computer&gt;&lt;Security\sUserID=(?&lt;UserID&gt;\w.*)\/&gt;&lt;\/System&gt;.*&lt;Data\sName=ProcessId&gt;(?&lt;ProcessID&gt;\d+).*&lt;Data Name=Image&gt;(?&lt;Image&gt;.*)&lt;\/Data&gt;&lt;Data Name=FileVersion&gt;.*&lt;\/Data&gt;&lt;Data Name=OriginalFileName&gt;(?&lt;OriginalFileName&gt;.*)&lt;\/Data&gt;&lt;Data Name=CommandLine&gt;(?&lt;CommandLine&gt;.*)&lt;\/Data&gt;&lt;Data Name=CurrentDirectory&gt;(?&lt;CurrentDirectory&gt;.*)&lt;\/Data&gt;&lt;Data Name=User&gt;(?&lt;User&gt;\w.*)&lt;\/Data&gt;&lt;Data Name=LogonGuid&gt;.*&lt;Data Name=ParentProcessId&gt;(?&lt;ParentProcessID&gt;\d+)&lt;\/Data&gt;&lt;Data Name=ParentImage&gt;(?&lt;ParentImage&gt;\w.*)&lt;\/Data&gt;&lt;Data Name=ParentCommandLine&gt;(?&lt;ParentCommandLine&gt;.*)&lt;\/Data&gt;&lt;Data Name=ParentUser&gt;(?&lt;ParentUser&gt;\w.*)&lt;\/Data&gt;"
+| where ParentUser!="NT AUTHORITY\SYSTEM" AND Image!="C:\Program Files\Mozilla Firefox\firefox.exe" AND ParentImage!="-"
+| search User=*$user$* OR ParentUser=*$user$*
+| table  _time host ParentUser User ParentImage Image CommandLine
+| sort -time</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>File Creation/Modification (Sysmon EventID=11)</title>
+      <input type="checkbox" token="blacklist_file_creation" searchWhenChanged="true">
+        <label>TargetFilename Filter</label>
+        <choice value="TargetFilename!=&quot;C:\\*\\desktop.ini&quot;">desktop.ini</choice>
+        <choice value="TargetFilename!=&quot;C:\\Windows\\System32\\Tasks\\Microsoft\\Windows\\SoftwareProtectionPlatform\\SvcRestartTask&quot;">SvcRestartTask</choice>
+        <choice value="Image!=&quot;C:\\Program Files\\Mozilla Firefox\\updater.exe&quot; AND Image!=&quot;C:\\Program Files\\Mozilla Firefox\\uninstall\\helper.exe&quot; AND   Image!=&quot;C:\\Program Files (x86)\\Mozilla Maintenance Service\\maintenanceservice_tmp.exe&quot;">Firefox</choice>
+        <choice value="TargetFilename!=&quot;C:\\Windows\\System32\\Tasks\\Microsoft\\Windows\\WindowsUpdate\\Scheduled Start&quot; AND TargetFilename!=&quot;C:\\Windows\\System32\\Tasks\\Microsoft\\Windows\\WindowsUpdate\\AUSessionConnect&quot; AND TargetFilename!=&quot;C:\\Windows\\System32\\Tasks\\Microsoft\\Windows\\WindowsUpdate\\AUScheduledInstall&quot;">Windows Update</choice>
+        <choice value="TargetFilename!=&quot;C:\\Windows\\System32\\Tasks\\Microsoft\\Windows\\Device Setup\\Metadata Refresh&quot;">Metadata Refresh</choice>
+        <choice value="TargetFilename!=&quot;C:\\Users\\*\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu*&quot; AND TargetFilename!=&quot;C:\\Windows\\System32\\Tasks\\Optimize Start Menu Cache Files*&quot;">Start Menu</choice>
+        <choice value="Image!=&quot;C:\\Windows\\Microsoft.NET\\Framework*\\*\\mscorsvw.exe&quot; AND TargetFilename!=&quot;C:\\Windows\\System32\\Tasks\\Microsoft\\Windows\\.NET Framework\\.NET Framework*&quot;">Net Fwk</choice>
+        <choice value="*">No FIlter</choice>
+        <delimiter> AND </delimiter>
+        <initialValue>TargetFilename!="C:\\*\\desktop.ini",TargetFilename!="C:\\Windows\\System32\\Tasks\\Microsoft\\Windows\\SoftwareProtectionPlatform\\SvcRestartTask",Image!="C:\\Program Files\\Mozilla Firefox\\updater.exe" AND Image!="C:\\Program Files\\Mozilla Firefox\\uninstall\\helper.exe" AND   Image!="C:\\Program Files (x86)\\Mozilla Maintenance Service\\maintenanceservice_tmp.exe",TargetFilename!="C:\\Windows\\System32\\Tasks\\Microsoft\\Windows\\WindowsUpdate\\Scheduled Start" AND TargetFilename!="C:\\Windows\\System32\\Tasks\\Microsoft\\Windows\\WindowsUpdate\\AUSessionConnect" AND TargetFilename!="C:\\Windows\\System32\\Tasks\\Microsoft\\Windows\\WindowsUpdate\\AUScheduledInstall",TargetFilename!="C:\\Windows\\System32\\Tasks\\Microsoft\\Windows\\Device Setup\\Metadata Refresh",TargetFilename!="C:\\Users\\*\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu*" AND TargetFilename!="C:\\Windows\\System32\\Tasks\\Optimize Start Menu Cache Files*",Image!="C:\\Windows\\Microsoft.NET\\Framework*\\*\\mscorsvw.exe" AND TargetFilename!="C:\\Windows\\System32\\Tasks\\Microsoft\\Windows\\.NET Framework\\.NET Framework*"</initialValue>
+        <default>*</default>
+      </input>
+      <table>
+        <search>
+          <query>index=main source="xmlwineventlog:microsoft-windows-sysmon/operational" sourcetype="xmlwineventlog" EventID=11 host=$host$*
+| eval _raw=replace(_raw,"'","")    
+| rex field=_raw "&lt;EventID&gt;(?&lt;EventID&gt;\d+)&lt;\/EventID&gt;.*&lt;Computer&gt;(?&lt;Computer&gt;\w.*)&lt;\/Computer&gt;&lt;Security\sUserID=(?&lt;UserID&gt;\w.*)\/&gt;&lt;\/System&gt;&lt;EventData&gt;&lt;Data Name=RuleName&gt;(?&lt;RuleName&gt;\w+)&lt;\/Data&gt;&lt;Data\sName=UtcTime&gt;.*&lt;Data Name=ProcessId&gt;(?&lt;ProcessID&gt;\d+)&lt;\/Data&gt;&lt;Data Name=Image&gt;(?&lt;Image&gt;.*)&lt;\/Data&gt;&lt;Data Name=TargetFilename&gt;(?&lt;TargetFilename&gt;.*)&lt;\/Data&gt;&lt;Data Name=CreationUtcTime&gt;.*&lt;Data Name=User&gt;(?&lt;User&gt;.*)&lt;\/Data&gt;&lt;\/EventData&gt;&lt;\/Event&gt;"
+| search $blacklist_file_creation$ AND User=*$user$*
+| table _time Computer User Image TargetFilename</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Created or Deleted Registry Keys</title>
+      <input type="checkbox" token="blacklist1" searchWhenChanged="true">
+        <label>TargetObject Filter</label>
+        <choice value="TargetObject!=&quot;HKU\\*&quot;">HKU</choice>
+        <choice value="TargetObject!=&quot;HKCR\\*&quot;">HKCR</choice>
+        <choice value="TargetObject!=&quot;HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Authentication\\LogonUI\\*&quot;">LogonUI</choice>
+        <delimiter> AND </delimiter>
+        <initialValue>TargetObject!="HKU\\*",TargetObject!="HKCR\\*",TargetObject!="HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Authentication\\LogonUI\\*"</initialValue>
+      </input>
+      <input type="checkbox" token="blacklist2" searchWhenChanged="true">
+        <label>Image Filter</label>
+        <choice value="Image!=&quot;C:\\Windows\\System32\\svchost.exe&quot;">svchost</choice>
+        <choice value="Image!=&quot;C:\\Program Files\\Mozilla Firefox\\uninstall\\helper.exe&quot;">Firefox</choice>
+        <choice value="Image!=&quot;C:\\Windows\\System32\\poqexec.exe&quot;">poqexec</choice>
+        <choice value="Image!=&quot;System&quot;">System</choice>
+        <choice value="Image!=&quot;C:\\Windows\\winsxs\\*\\TiWorker.exe&quot;">TiWorker</choice>
+        <choice value="Image!=&quot;C:\\Windows\\servicing\\TrustedInstaller.exe&quot;">TrustedInstaller</choice>
+        <choice value="Image!=&quot;C:\\Windows\\System32\\services.exe&quot;">Services.exe</choice>
+        <delimiter> AND </delimiter>
+        <initialValue>Image!="C:\\Windows\\System32\\svchost.exe",Image!="C:\\Program Files\\Mozilla Firefox\\uninstall\\helper.exe",Image!="C:\\Windows\\System32\\poqexec.exe",Image!="System",Image!="C:\\Windows\\winsxs\\*\\TiWorker.exe",Image!="C:\\Windows\\servicing\\TrustedInstaller.exe",Image!="C:\\Windows\\System32\\services.exe"</initialValue>
+      </input>
+      <table>
+        <search>
+          <query>index=main source="XmlWinEventLog:Microsoft-Windows-Sysmon/Operational" sourcetype=xmlwineventlog EventCode=12 OR EventCode=13 OR EventCode=14 host=$host$
+| eval _raw=replace(_raw,"'","") 
+| rex field=_raw "&lt;EventID&gt;(?&lt;Event_Code&gt;\d+)&lt;\/EventID&gt;.*&lt;Computer&gt;(?&lt;Computer_Name&gt;.*)&lt;\/Computer&gt;&lt;Security UserID=(?&lt;UserID&gt;.*)\/&gt;&lt;\/System&gt;&lt;EventData&gt;&lt;Data Name=RuleName&gt;(?&lt;Rule_Name&gt;.*)&lt;\/Data&gt;&lt;Data Name=EventType&gt;(?&lt;Event_Type&gt;\w+)&lt;\/Data&gt;&lt;Data Name=UtcTime&gt;.*&lt;Data Name=ProcessId&gt;(?&lt;Process_ID&gt;\d+)&lt;\/Data&gt;&lt;Data Name=Image&gt;(?&lt;Image&gt;.*)&lt;\/Data&gt;&lt;Data Name=TargetObject&gt;(?&lt;Target_Object&gt;\w.*)&lt;\/Data&gt;&lt;Data Name=User&gt;(?&lt;User&gt;.*)&lt;\/Data&gt;&lt;\/EventData&gt;"
+| search $blacklist1$  $blacklist2$ AND User=$user$
+| eval Detail=coalesce(NewName,Details)
+| table _time host User EventType Image TargetObject Detail
+| sort -_time</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Identify Spike in User Logins (Failed or Success)</title>
+      <chart>
+        <search>
+          <query>index=main source="wineventlog:security" (EventCode=4624 AND Account_Name!="-") OR EventCode=4625 OR EventCode=4778 OR EventCode=4801 host=*$host$*
+| search Source_Network_Address=$source$
+| eval Target_Account=mvindex(Account_Name,1)
+| eval type=if(Keywords="Audit Success","Success","Failure")
+| search Target_Account=*$user$* OR Subject_Account=*$user$*
+| timechart count by type
+| append 
+    [ search index=main source="wineventlog:security" (EventCode=4624 AND Account_Name!="-") OR EventCode=4625 OR EventCode=4778 OR EventCode=4801
+    | eval Subject_Account=mvindex(Account_Name,0)
+    | eval Target_Account=mvindex(Account_Name,1)
+    | search Target_Account=*$user$* OR Subject_Account=*$user$*
+    | timechart count by Target_Account]</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">Failure,Success</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Login Processes</title>
+      <chart>
+        <search>
+          <query>index=main source="wineventlog:security" (EventCode=4624 AND Account_Name!="-") OR EventCode=4625 OR EventCode=4778 OR EventCode=4801 host=$host$*
+| search Source_Network_Address=$source$
+| eval Subject_Account=mvindex(Account_Name,0)
+| eval Target_Account=mvindex(Account_Name,1)
+| search Target_Account=*$user$* OR Subject_Account=*$user$*
+| chart count by Process_Name</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Login Types</title>
+      <chart>
+        <search>
+          <query>index=main source="wineventlog:security" (EventCode=4624 AND Account_Name!="-") OR EventCode=4625 OR EventCode=4778 OR EventCode=4801 host=$host$*
+| search Source_Network_Address=$source$
+| eval Login_Type= case(Logon_Type==2,"Interactive (2)", Logon_Type==3,"Network (3)",Logon_Type==4,"Batch (4) e.g. schedule task",Logon_Type==5,"Service (5)",Logon_Type==7,"Unlock (7)",Logon_Type==8,"Network Cleartext (8) e.g. IIS",Logon_Type==10,"Remote Desktop (10)",Logon_Type==11,"Logon w cached creds (11)")
+| eval Subject_Account=mvindex(Account_Name,0)
+| eval Target_Account=mvindex(Account_Name,1)
+| search Target_Account=*$user$* OR Subject_Account=*$user$*
+| chart count by Login_Type</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>User Logins by Host</title>
+      <input type="text" token="audit_type" searchWhenChanged="true">
+        <label>Audit Type</label>
+        <default>*</default>
+      </input>
+      <table>
+        <search>
+          <query>index=main source="wineventlog:security" (EventCode=4624 AND Account_Name!="-") OR EventCode=4625 OR EventCode=4778 OR EventCode=4801 host=$host$*
+| search Source_Network_Address=$source$
+| search Keywords=*$audit_type$*
+| eval Subject_Account=mvindex(Account_Name,0)
+| eval Target_Account=mvindex(Account_Name,1)
+| search Target_Account=*$user$* OR Subject_Account=*$user$*
+| eval Login_Type= case(Logon_Type==2,"Interactive (2)", Logon_Type==3,"Network (3)",Logon_Type==4,"Batch (4) e.g. schedule task",Logon_Type==5,"Service (5)",Logon_Type==7,"Unlock (7)",Logon_Type==8,"Network Cleartext (8) e.g. IIS",Logon_Type==10,"Remote Desktop (10)",Logon_Type==11,"Logon w cached creds (11)")
+| table _time, Keywords, ComputerName, Subject_Account, Target_Account, Login_Type, Source_Network_Address, Process_Name</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Login Failure Reason</title>
+      <table>
+        <search>
+          <query>index=main source="wineventlog:security" EventCode=4625 host=$host$*
+| search Source_Network_Address=$source$
+| eval Subject_Account=mvindex(Account_Name,0)
+| eval Target_Account=mvindex(Account_Name,1)
+| search Target_Account=*$user$* OR Subject_Account=*$user$*
+| eval Failure_Code=case(Sub_Status=="0xC0000064","Username doesnt exist",Sub_Status=="0xC000006A","Username is correct but password is wrong",Sub_Status=="0xC0000234","User is locked out",Sub_Status=="0xC0000072","Account is disabled", Sub_Status=="0xC000006F", "User logged in outside of time or day restrictions", Sub_Status=="0xC0000070","Workstation restriction",Sub_Status=="0xC0000193","Account Expiration",Sub_Status=="0xC0000071","Expired Password",Sub_Status=="0xC0000133","Clocks are out of sync",Sub_Status=="0xC0000224","User is required to change password at next login",Sub_Status=="0xC0000225","Windows Bug (No Risk)",Sub_Status=="0xC000015b","User has not been granted the login type right on this machine")
+| eval Remote_Address=if(Source_Network_Address=="-",Workstation_Name,Source_Network_Address)
+| table _time, ComputerName, Subject_Account, Target_Account, Remote_Address, Failure_Code</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Windows Process Investigator (Sysmon Logs)</title>
+      <input type="text" token="ppn" searchWhenChanged="true">
+        <label>Process Name or ProcessID</label>
+        <default>*</default>
+        <prefix>*</prefix>
+        <suffix>*</suffix>
+        <initialValue>*</initialValue>
+      </input>
+      <input type="checkbox" token="noise" searchWhenChanged="true">
+        <label>Filter Noisy Global Processes</label>
+        <choice value="ParentPath!=*vmtoolsd.exe* AND Image!=&quot;C:\\Program Files\\SplunkUniversalForwarder\\bin\\*.exe&quot; AND ParentPath!=*CollectGuestLogs.exe* AND Image!=&quot;C:\\Program Files\\Mozilla Firefox\\firefox.exe&quot; AND Image!=&quot;C:\\Program Files\\Mozilla Firefox\\updater.exe&quot;">Filter</choice>
+        <choice value="*">No</choice>
+        <delimiter> </delimiter>
+      </input>
+      <table>
+        <search>
+          <query>index=main EventCode=8 OR EventCode=1 OR EventCode=10 host=$host$
+| eval ParentPath=coalesce(ParentImage, SourceImage), ChildPath=coalesce(Image, TargetImage), ParentID=coalesce(ParentProcessId, SourceProcessId), ChildID=coalesce(ProcessId,TargetProcessId), ParentUser=coalesce(ParentUser, SourceUser), ChildUser=coalesce(User,TargetUser) 
+| search $noise$ (ParentUser=$user$)
+| fields *
+| fillnull value=" " CommandLine
+| eval parent = ParentPath." (".ParentID.")"
+| eval child = ChildPath." (".ChildID.")"
+| eval detail=strftime(_time,"%Y-%m-%d %H:%M:%S")." ".CommandLine
+| pstree child=child parent=parent detail=detail
+| search tree=$ppn$
+| table tree</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="count">2</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>
+
+<!-- SOURCE: ANNA ANDLER (c) 2023 | kogatana-x -->

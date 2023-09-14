@@ -1,0 +1,313 @@
+<form version="1.1" theme="dark">
+  <label>Linux User Activity</label>
+  <fieldset submitButton="true" autoRun="true">
+    <input type="time" token="field1">
+      <label></label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="host" searchWhenChanged="true">
+      <label>Host</label>
+      <default>*</default>
+      <initialValue>*</initialValue>
+    </input>
+    <input type="text" token="user" searchWhenChanged="true">
+      <label>User</label>
+      <default>*</default>
+      <initialValue>*</initialValue>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Commands Executed w/ Sudo By User</title>
+      <chart>
+        <title>Sorted By UID</title>
+        <search>
+          <query>index=main type=USER_CMD source=/var/log/*audit.log host=*$host$*
+| rex field=_raw "type=(?&lt;Type&gt;\w+).*\spid=(?&lt;PID&gt;\d+)\s.*cwd=\"(?&lt;Current_Directory&gt;.*)\"\scmd=(?&lt;CMD&gt;.*)\sexe=\"(?&lt;Command&gt;.*)\"\sterminal=(?&lt;Termainal&gt;\w.*)\sres=(?&lt;Result&gt;\w+).*UID=\"(?&lt;UID&gt;\w+)\"\sAUID=\"(?&lt;AUID&gt;\w+)\""
+| search UID=*$user$* OR AUID=*$user$*
+| search Result=*$result1$*
+| timechart count by Result
+| append 
+    [ search index=main type=USER_CMD source=/var/log/*audit.log host=*$host$*
+    | rex field=_raw "type=(?&lt;Type&gt;\w+).*\spid=(?&lt;PID&gt;\d+)\s.*cwd=\"(?&lt;Current_Directory&gt;.*)\"\scmd=(?&lt;CMD&gt;.*)\sexe=\"(?&lt;Command&gt;.*)\"\sterminal=(?&lt;Termainal&gt;\w+)\sres=(?&lt;Result&gt;\w+).*UID=\"(?&lt;UID&gt;\w+)\"\sAUID=\"(?&lt;AUID&gt;\w+)\""
+    | search UID=*$user$* OR AUID=*$user$*
+    | search Result=*$result1$*
+    | timechart count by UID]</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">success,failed</option>
+        <option name="charting.chart.stackMode">stacked100</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Top Sudo Commands Executed</title>
+      <chart>
+        <search>
+          <query>index=main type=USER_CMD source=/var/log/*audit.log host=*$host$*
+| rex field=_raw "type=(?&lt;Type&gt;\w+).*\spid=(?&lt;PID&gt;\d+)\s.*cwd=\"(?&lt;Current_Directory&gt;.*)\"\scmd=(?&lt;CMD&gt;.*)\sexe=\"(?&lt;Command&gt;.*)\"\sterminal=(?&lt;Termainal&gt;\w.*)\sres=(?&lt;Result&gt;\w+).*UID=\"(?&lt;UID&gt;\w+)\"\sAUID=\"(?&lt;AUID&gt;\w+)\""
+| search UID=*$user$* OR AUID=*$user$*
+| search Result=*$result1$*
+| eval Command_Line=urldecode(trim(replace(CMD,"([a-fA-F0-9]{2})","%\1"),"\""))
+| chart count by Command_Line</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Top Sudo Users</title>
+      <chart>
+        <search>
+          <query>index=main type=USER_CMD source=/var/log/*audit.log host=*$host$*
+| rex field=_raw "type=(?&lt;Type&gt;\w+).*\spid=(?&lt;PID&gt;\d+)\s.*cwd=\"(?&lt;Current_Directory&gt;.*)\"\scmd=(?&lt;CMD&gt;.*)\sexe=\"(?&lt;Command&gt;.*)\"\sterminal=(?&lt;Termainal&gt;\w.*)\sres=(?&lt;Result&gt;\w+).*UID=\"(?&lt;UID&gt;\w+)\"\sAUID=\"(?&lt;AUID&gt;\w+)\""
+| search UID=*$user$* OR AUID=*$user$*
+| search Result=*$result1$*
+| chart count by UID</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Commands Executed w/ Sudo</title>
+      <input type="text" token="result1" searchWhenChanged="true">
+        <label>Audit (Success/Failure)</label>
+        <default>*</default>
+        <initialValue>*</initialValue>
+      </input>
+      <table>
+        <search>
+          <query>index=main type=USER_CMD source=/var/log/*audit.log host=*$host$*
+| rex field=_raw "type=(?&lt;Type&gt;\w+).*\spid=(?&lt;PID&gt;\d+)\s.*cwd=\"(?&lt;Current_Directory&gt;.*)\"\scmd=(?&lt;CMD&gt;.*)\sexe=\"(?&lt;Command&gt;.*)\"\sterminal=(?&lt;Termainal&gt;\w.*)\sres=(?&lt;Result&gt;\w+).*UID=\"(?&lt;UID&gt;\w+)\"\sAUID=\"(?&lt;AUID&gt;\w+)\""
+| search UID=*$user$* OR AUID=*$user$*
+| search Result=*$result1$*
+| eval Command_Line=urldecode(trim(replace(CMD,"([a-fA-F0-9]{2})","%\1"),"\""))
+| table _time AUID UID Current_Directory Command Command_Line Result
+| sort -_time</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <option name="wrap">true</option>
+        <format type="color" field="Result">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>User ID Changes</title>
+      <table>
+        <title>w/ /usr/bin/su</title>
+        <search>
+          <query>index=main source=/var/log/*audit.log type=SYSCALL "/usr/bin/su"
+| rex field=_raw "type=(?&lt;Type&gt;\w+)\smsg=audit\((?&lt;ID&gt;\d+).\d+\:\d+\):.*"
+| rex field=_raw "success=(?&lt;SUCCESS&gt;\w+)\s.*pid=(?&lt;PID&gt;\d+)\s.*comm=\"(?&lt;COMM&gt;\w+)\"\sexe=\"(?&lt;Command&gt;.*)\"\s.*AUID=\"(?&lt;AUID&gt;\w+)\"\sUID=\"(?&lt;UID&gt;\w+)\"\sGID=\"(?&lt;GID&gt;\w+)\"\sEUID=\"(?&lt;EUID&gt;\w+)\"\sSUID=\"(?&lt;SUID&gt;\w+)\"\sFSUID=\"(?&lt;FSUID&gt;\w+)\"\sEGID=\"(?&lt;EGID&gt;\w+)\"\sSGID=\"(?&lt;SGID&gt;\w+)\"\sFSGID=\"(?&lt;FSGID&gt;\w+)\""
+| rex field=_raw "type=(?&lt;Type&gt;\w+).*\spid=(?&lt;PID&gt;\d+)\s.*cwd=\"(?&lt;Current_Directory&gt;.*)\"\scmd=(?&lt;CMD&gt;.*)\sexe=\"(?&lt;Command&gt;.*)\"\sterminal=(?&lt;Termainal&gt;\w+)\sres=(?&lt;RESULT&gt;\w+).*UID=\"(?&lt;UID&gt;\w+)\"\sAUID=\"(?&lt;Initial_UID&gt;\w+)\""
+| where (UID!=SGID OR UID!=AUID)
+| dedup ID
+| transaction PID
+| eval Command_Line=UID+"@"+host+"# su - " + SGID
+| rename SGID AS "User to Become" UID AS "Current User" AUID AS "User At Login"
+| eval "Su Inside Su"=IF(ISNULL(mvindex(ID,1)),"Normal","Investigate")
+| table _time "User At Login" Command_Line  "Current User" "User to Become" "Su Inside Su"
+| sort time</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Su Inside Su">
+          <colorPalette type="map">{"Investigate":#602CA1}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>New Users / Groups</title>
+      <chart>
+        <search>
+          <query>index=main source=/var/log/*audit.log (type="ADD_USER" OR type="ADD_GROUP")
+| rex field=_raw "type=(?&lt;Type&gt;\w+)\smsg=audit\((?&lt;MSGID&gt;.*):\d+\):" 
+| rex field=_raw "id=(?&lt;New_GID&gt;\d+)\sexe=\"(?&lt;Command&gt;.*)\"\s.*addr=(?&lt;IPADDR&gt;.*)\sterminal=(?&lt;TERMINAL&gt;.*)\sres=(?&lt;RESULT&gt;\w+).*UID=\"(?&lt;UID&gt;\w+)\"\sAUID=\"(?&lt;AUID&gt;\w+)\"\sID=\"(?&lt;USER&gt;\w+)"
+| rex field=_raw "acct=\"(?&lt;User_Name&gt;\w+)\"\s"
+| transaction MSGID
+| eval User=coalesce(User_Name,USER)
+| timechart count by User</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked100</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>User/Group Activity</title>
+      <table>
+        <search>
+          <query>index=main source=/var/log/*audit.log (type="ADD_USER" OR type="ADD_GROUP")
+| rex field=_raw "type=(?&lt;Type&gt;\w+)\smsg=audit\((?&lt;MSGID&gt;.*):\d+\):" 
+| rex field=_raw "acct=\"(?&lt;User_Name&gt;\w+)\"\s"
+| rex field=_raw "id=(?&lt;New_GID&gt;\d+)\sexe=\"(?&lt;Command&gt;.*)\"\s.*addr=(?&lt;IPADDR&gt;.*)\sterminal=(?&lt;TERMINAL&gt;.*)\sres=(?&lt;RESULT&gt;\w+).*UID=\"(?&lt;UID&gt;\w+)\"\sAUID=\"(?&lt;AUID&gt;\w+)\"\sID=\"(?&lt;USER&gt;\w+)"
+| transaction MSGID
+| eval "User/Group Name"=coalesce(User_Name,USER)
+| eval Type=coalesce(mvindex(Type,1),mvindex(Type,0))
+| eval Result=IF(RESULT="failed","Failure","Successful")
+| rename AUID AS User New_GID AS "User/Group ID" 
+| table _time host Type  User "User/Group Name"  "User/Group ID" Result
+| sort time</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Type">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <format type="color" field="User">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Identify Spike by User (Failed or Success)</title>
+      <chart>
+        <search>
+          <query>index=main source=/var/log/auth.log ("Failed password" OR "Accepted password")
+| search host=$host$
+| rex field=_raw "^[^\]\n]*\]:\s+(?P&lt;TYPE&gt;\w+) password for (?&lt;USER&gt;\w+) from (?&lt;IPADDR&gt;[^ ]+)" 
+| timechart count by TYPE
+| append 
+    [ search index=main source=/var/log/auth.log ("Failed password" OR "Accepted password")
+    | search host=$host$
+    | rex field=_raw "^[^\]\n]*\]:\s+(?P&lt;TYPE&gt;\w+) password for (?&lt;USER&gt;\w+) from (?&lt;IPADDR&gt;[^ ]+)" 
+    | timechart count by USER]</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">Failed,Accepted</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.drilldown">all</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>SSH Session Time</title>
+      <table>
+        <search>
+          <query>index=main source=/var/log/auth.log
+| rex field=_raw "^(?&lt;Time&gt;\w{3}\s\d{1,2}\s\d{2}:\d{2}:\d{2})\s(?&lt;HOST&gt;\w+)\s(?&lt;PROC&gt;\w+)\[\d+\]:\s(?&lt;Connection_Type&gt;\w.*)\sfrom\s"
+| rex field=_raw "from\s(?&lt;Client_IP&gt;\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3})\sport\s(?&lt;SPORT&gt;\d+)\son\s(?&lt;Target_IP&gt;\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3})\sport\s(?&lt;DPORT&gt;\d+)"
+| rex field=_raw "from\suser\s(?&lt;USER&gt;\w+)\s(?&lt;Client_IP&gt;\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3})\sport\s(?&lt;SPORT&gt;\d+)"
+| transaction SPORT
+| eval Session_Time=tostring(strptime(mvindex(Time,1),"%b %d %T")-strptime(mvindex(Time,0),"%b %d %T"),"duration")
+| table host Target_IP Client_IP USER Session_Time
+| sort -Session_Time</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Session_Time">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>SSH User Logins</title>
+      <input type="text" token="filter3" searchWhenChanged="true">
+        <label>Audit Type (Failed|Accepted|Invalid)</label>
+        <default>*</default>
+        <initialValue>*</initialValue>
+      </input>
+      <table>
+        <search>
+          <query>index=main source=/var/log/auth.log host=*$host$*
+| rex field=_raw "\w{3}\s\d{2}\s\d{2}:\d{2}:\d{2}\s(?&lt;Host_Name&gt;\w+)\s(?&lt;Process_Name&gt;\w+).*\:\s(?&lt;Result&gt;\w.+)\sfor(?&lt;Reason&gt;.*)\s(?&lt;User_Name&gt;\w+)\sfrom\s(?&lt;Source_IP&gt;\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3})\sport\s(?&lt;Source_Port&gt;\d{1,6})\s(?&lt;Proc&gt;\w+)"
+| search User_Name=*$user$* 
+| search Result=*$filter3$* OR Reason=*$filter3$*
+| search Result IN("Failed password","Accepted password","maximum authentication attempts exceeded")
+| table _time,host,Source_IP,Reason,User_Name,Result</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Authentication_Result">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <format type="color" field="Result">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>All Privilege Invokes</title>
+      <input type="text" token="result2" searchWhenChanged="true">
+        <label>Audit (Success/Failure)</label>
+        <default>*</default>
+        <initialValue>*</initialValue>
+      </input>
+      <table>
+        <search>
+          <query>index=main source=/var/log/*audit.log host=*$host$* *$user$*
+| rex field=_raw "type=(?&lt;Type&gt;\w+)\smsg=audit\((?&lt;ID&gt;.*)\):.*"
+| rex field=_raw "success=(?&lt;SUCCESS&gt;\w+)\s.*pid=(?&lt;PID&gt;\d+)\s.*comm=\"(?&lt;COMM&gt;\w+)\"\sexe=\"(?&lt;Command&gt;.*)\"\s.*AUID=\"(?&lt;AUID&gt;\w+)\"\sUID=\"(?&lt;UID&gt;\w+)\"\sGID=\"(?&lt;GID&gt;\w+)\"\sEUID=\"(?&lt;EUID&gt;\w+)\"\sSUID=\"(?&lt;SUID&gt;\w+)\"\sFSUID=\"(?&lt;FSUID&gt;\w+)\"\sEGID=\"(?&lt;EGID&gt;\w+)\"\sSGID=\"(?&lt;SGID&gt;\w+)\"\sFSGID=\"(?&lt;FSGID&gt;\w+)\""
+| rex field=_raw "type=(?&lt;Type&gt;\w+).*\spid=(?&lt;PID&gt;\d+)\s.*cwd=\"(?&lt;Current_Directory&gt;.*)\"\scmd=(?&lt;CMD&gt;.*)\sexe=\"(?&lt;Command&gt;.*)\"\sterminal=(?&lt;Termainal&gt;\w+)\sres=(?&lt;RESULT&gt;\w+).*UID=\"(?&lt;UID&gt;\w+)\"\sAUID=\"(?&lt;Initial_UID&gt;\w+)\""
+| eval Command_Line=urldecode(trim(replace(CMD,"([a-fA-F0-9]{2})","%\1"),"\""))
+| transaction ID
+| eval Result=IF(RESULT="failed","Failure","Successful")
+| search Result=*$result2$*
+| table _time Type Result AUID UID GID SUID Command Command_Line
+| sort time</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <format type="color" field="Result">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index%3Dmain%20source%3D%2Fvar%2Flog%2F*audit.log%0A%7C%20rex%20field%3D_raw%20%22type%3D(%3F%3CType%3E%5Cw%2B)%5Csmsg%3Daudit%5C((%3F%3CID%3E.*)%5C)%3A.*%22%0A%7C%20transaction%20ID&amp;earliest=$field1.earliest$&amp;latest=$field1.latest$</link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+</form>
+
+<!-- SOURCE: ANNA ANDLER (c) 2023 | kogatana-x -->

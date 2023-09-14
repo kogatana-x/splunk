@@ -1,0 +1,179 @@
+<form version="1.1" theme="dark">
+  <label>Splunk Integrity Monitoring</label>
+  <fieldset submitButton="true">
+    <input type="time" token="field1">
+      <label></label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="User" searchWhenChanged="true">
+      <label>User</label>
+      <default>*</default>
+      <prefix>*</prefix>
+      <suffix>*</suffix>
+      <initialValue>*</initialValue>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Splunk Login Activity by Client IP</title>
+      <chart>
+        <search>
+          <query>index="_audit" action="login attempt"
+| timechart count by info
+| append 
+    [search index="_audit" action="login attempt"
+    | eval Client=coalesce(clientip,src)
+    | timechart count by Client limit=0]</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">succeeded,failed</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Splunk Login Activity</title>
+      <table>
+        <title>Logins</title>
+        <search>
+          <query>index="_audit" action="login attempt"
+| eval Client=coalesce(clientip,src)
+| table _time Client user info useragent 
+| sort -time</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="clientip">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>User /Group Activity</title>
+      <table>
+        <search>
+          <query>index="_audit" action="create_user" OR action=remove_user OR (action=edit_user AND info=succeeded) 
+| table _time host user action username roles info
+| sort -time</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="action">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Dashboard Activity</title>
+      <chart>
+        <search>
+          <query>index=_* source="/opt/splunk/var/log/splunk/splunkd_ui_access.log" method!=GET "/en-US/splunkd/__raw/servicesNS/nobody/search/data/ui/views" (status&gt;=200 AND status&lt;=400)
+| rex field=uri "\/en-US\/splunkd\/__raw\/servicesNS\/nobody\/search\/data\/ui\/views\/(?&lt;Dashboard_ID&gt;\w+)"
+| timechart count by Dashboard_ID usenull=false
+| append 
+    [search index=_* source="/opt/splunk/var/log/splunk/splunkd_ui_access.log" method!=GET "/en-US/splunkd/__raw/servicesNS/nobody/search/data/ui/views" (status&gt;=200 AND status&lt;=400)
+| rex field=uri "\/en-US\/splunkd\/__raw\/servicesNS\/nobody\/search\/data\/ui\/views\/(?&lt;Dashboard_ID&gt;\w+)"
+| timechart count by method usenull=false ]</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">DELETE,POST</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Dashboard Edits</title>
+      <table>
+        <search>
+          <query>index=_* source="/opt/splunk/var/log/splunk/splunkd_ui_access.log" method!=GET "/en-US/splunkd/__raw/servicesNS/nobody/search/data/ui/views" AND uri!="/en-US/splunkd/__raw/servicesNS/nobody/search/data/ui/views?output_mode=json"
+| rex field=uri "\/en-US\/splunkd\/__raw\/servicesNS\/nobody\/search\/data\/ui\/views\/(?&lt;Dashboard_ID&gt;\w+)"
+| table _time clientip user method status Dashboard_ID</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="method">
+          <colorPalette type="sharedList"></colorPalette>
+          <scale type="sharedCategory"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Possible Web Shells</title>
+      <table>
+        <search>
+          <query>index=_internal source="/opt/splunk/var/log/splunk/splunkd_ui_access.log" uri!="/en-US/splunkd/*" AND uri!="/en-US/static/*"  AND uri!="/en-US/app/launcher*" AND uri!="/en-US/app/search/*" AND uri!="/en-US/config*"  AND uri!="/en-US/account/login*"  AND uri!="/en-US/*catalog?autoload*version*" AND uri!="/en-US/" AND uri!="/"
+| table _time clientip method status uri</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Splunk Search History</title>
+      <table>
+        <search>
+          <query>index="_audit" (action=search AND info=granted AND search_id!=NULL AND user!="splunk-system-user")
+| dedup user,search
+| table _time user search
+| sort -_time</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row><!--
+  <row>
+    <panel>
+      <table>
+        <title>Another way of tracking logins</title>
+        <search>
+          <query>192.168.150.12 - test [18/Dec/2022:00:10:00.193 -0600] "POST /en-US/account/login HTTP/1.1" 200 12 "http://10.100.137.3:8000/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:107.0) Gecko/20100101 Firefox/107.0" - 5652dea3eded4babd5389253495534e7 14ms</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Another way of tracking possible config edits</title>
+        <search>
+          <query>GET /en-US/config</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row> -->
+</form>
+
+<!-- SOURCE: ANNA ANDLER (c) 2023 | kogatana-x -->
