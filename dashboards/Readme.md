@@ -12,6 +12,18 @@
   ![](images/c2-privesc/2.png)
   ![](images/c2-privesc/3.png)
 
+## ESXi + vCenter Monitoring
+> This dashboard detects potential hardware and virtual machine failures for ESXi servers, among user activity. 
+### Search Fields: 
+- Search Timeframe
+- Host
+- Username
+- VM Name
+### Example Dashboard Activity:
+  ![](images/esxi-vcenter/1.png)
+  ![](images/esxi-vcenter/2.png)
+  ![](images/esxi-vcenter/3.png)
+
 ## Linux User Activity
 > This dashboard investigates user account modifications, login attempts, running processes, file system modifications, and services on Linux servers and endpoints. 
 ### Search Fields:
