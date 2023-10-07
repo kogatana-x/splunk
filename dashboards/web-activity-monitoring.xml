@@ -3,7 +3,7 @@
 <form version="1.1" theme="dark">
   <label>Web Activity</label>
   <description>Add Windows Web Monitors. Only works for Apache</description>
-  <fieldset submitButton="false">
+  <fieldset submitButton="true" autoRun="false">
     <input type="time" token="field1">
       <label></label>
       <default>
@@ -21,17 +21,31 @@
       <delimiter> OR </delimiter>
       <valueSuffix>"</valueSuffix>
     </input>
-    <input type="text" token="host" searchWhenChanged="true">
+    <input type="dropdown" token="host" searchWhenChanged="true">
       <label>Host</label>
       <default>*</default>
+      <fieldForLabel>host</fieldForLabel>
+      <fieldForValue>host</fieldForValue>
+      <search>
+        <query>index=linux earliest=-24h@h latest=now
+| dedup host
+| table host</query>
+      </search>
+      <prefix>host=</prefix>
     </input>
     <input type="text" token="client_ip" searchWhenChanged="true">
       <label>Client IP</label>
       <default>*</default>
+      <prefix>Client_IP=*</prefix>
+      <suffix>*</suffix>
+      <initialValue>*</initialValue>
     </input>
     <input type="text" token="code" searchWhenChanged="true">
       <label>HTTP Response Code</label>
       <default>*</default>
+      <prefix>HTTP_Response_Code=*</prefix>
+      <suffix>*</suffix>
+      <initialValue>*</initialValue>
     </input>
   </fieldset>
   <row>
@@ -46,13 +60,16 @@
         <default>*</default>
       </input>
       <table>
+        <title>$host$, $client_ip$, $code$, $monitor$, $method2$</title>
         <search>
-          <query>index=main $log_path$ NOT("*Splunk Website Monitoring*") 
-| search host=*$host$* 
+          <query>index=linux $log_path$ NOT("*Splunk Website Monitoring*") 
+| search $host$
 | rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
 | rex field=_raw "\"(?&lt;HTTP_Method&gt;\w+):\/\/(?&lt;Target_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?&lt;HTTP_Request_URL&gt;.*)\"\s\""
-| search HTTP_Response_Code=*$code$* 
-| search Client_IP=*$client_ip$*
+| search $code$
+| search $client_ip$
+| fillnull value="/" HTTP_Request_URL
+| eval Target_IP=coalesce(host,Target_IP)
 | eval Request_URL=urldecode(HTTP_Request_URL)
 | eval Request_Path=urldecode(HTTP_Request_Path)
 | search (HTTP_Request_Method=*$method2$* AND (HTTP_Request_Method=POST OR HTTP_Request_Method=PUT)) AND ((Request_Path=*$monitor$* OR Request_URL=*$monitor$* ) AND (Request_Path=*.php OR Request_URL=*.php))
@@ -67,13 +84,15 @@
     <panel>
       <title>HTTP Site Logins or Configuration Changes via GUI</title>
       <chart>
+        <title>$host$, $client_ip$, $code$, $monitor$, $method2$</title>
         <search>
-          <query>index=main $log_path$ NOT("*Splunk Website Monitoring*") 
-| search host=*$host$* 
+          <query>index=linux $log_path$ $host$ NOT("*Splunk Website Monitoring*") 
 | rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
 | rex field=_raw "\"(?&lt;HTTP_Method&gt;\w+):\/\/(?&lt;Target_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?&lt;HTTP_Request_URL&gt;.*)\"\s\""
-| search HTTP_Response_Code=*$code$* 
-| search Client_IP=*$client_ip$*
+| search $code$
+| search $client_ip$
+| fillnull value="/" HTTP_Request_URL
+| eval Target_IP=coalesce(host,Target_IP)
 | eval Request_URL=urldecode(HTTP_Request_URL)
 | eval Request_Path=urldecode(HTTP_Request_Path) 
 | search (HTTP_Request_Method=*$method2$* AND (HTTP_Request_Method=POST OR HTTP_Request_Method=PUT)) AND ((Request_Path=*$monitor$* OR Request_URL=*$monitor$* ) AND (Request_Path=*.php OR Request_URL=*.php))
@@ -91,12 +110,12 @@
     <panel>
       <title>Identify Spike in HTTP Response Codes</title>
       <chart>
+        <title>$host$, $client_ip$, $code$</title>
         <search>
-          <query>index=main  $log_path$  NOT("*Splunk Website Monitoring*") host=$host$
+          <query>index=linux  $log_path$  NOT("*Splunk Website Monitoring*") $host$
 | rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
-| rex field=_raw "\"(?&lt;HTTP_Method&gt;\w+):\/\/(?&lt;Target_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?&lt;HTTP_Request_URL&gt;.*)\"\s\""
-| search HTTP_Response_Code=*$code$* 
-| search Client_IP=*$client_ip$*
+| search $code$
+| search $client_ip$
 | timechart count by HTTP_Response_Code</query>
           <earliest>$field1.earliest$</earliest>
           <latest>$field1.latest$</latest>
@@ -109,13 +128,12 @@
     <panel>
       <title>Identify Spike in HTTP Request Methods</title>
       <chart>
-        <title>ALL</title>
+        <title>$host$, $client_ip$, $code$</title>
         <search>
-          <query>index=main  $log_path$  NOT("*Splunk Website Monitoring*") host=$host$
+          <query>index=linux  $log_path$ $host$ NOT("*Splunk Website Monitoring*")
 | rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
-| rex field=_raw "\"(?&lt;HTTP_Method&gt;\w+):\/\/(?&lt;Target_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?&lt;HTTP_Request_URL&gt;.*)\"\s\""
-| search HTTP_Response_Code=*$code$* 
-| search Client_IP=*$client_ip$*
+| search $code$
+| search $client_ip$
 | timechart count by HTTP_Request_Method</query>
           <earliest>$field1.earliest$</earliest>
           <latest>$field1.latest$</latest>
@@ -126,16 +144,19 @@
       </chart>
     </panel>
     <panel>
-      <title>Attacker IPs</title>
+      <title>Attacker IPs (Based on SQLi, XSS, LFI/RFI Attacks )</title>
       <chart>
-        <title>Based on SQLi, XSS, LFI/RFI Attacks</title>
+        <title>$host$, $client_ip$, $code$</title>
         <search>
-          <query>index=main  $log_path$  NOT("*Splunk Website Monitoring*") host=$host$
+          <query>index=linux  $log_path$  NOT("*Splunk Website Monitoring*") $host$
 | rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
 | rex field=_raw "\"(?&lt;HTTP_Method&gt;\w+):\/\/(?&lt;Target_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?&lt;HTTP_Request_URL&gt;.*)\"\s\""
+| fillnull value="/" HTTP_Request_URL
+| eval Target_IP=coalesce(host,Target_IP)
 | eval Request_Path=urldecode(HTTP_Request_Path) 
 | eval Request_URL=urldecode(HTTP_Request_URL) 
 | search ((Request_Path="* and *" OR Request_Path="* or *" OR Request_Path="* xor *" OR Request_Path="*%*" OR Request_Path="* union *" OR Request_Path="*--*" OR Request_Path="*'*") AND Request_Path!="*&lt;script&gt;*") OR (Request_Path="*&lt;script&gt;*" OR Request_URL="*&lt;script&gt;*" OR Request_URL="*../*" OR Request_Path="*../*" OR Request_URL="*=file:///*" OR Request_Path="*=file:///*" OR Request_URL="*=/*" OR Request_Path="*=/*" OR Request_Path="*=http*" OR Request_URL="*=http*")
+| search $code$ $client_ip$
 | chart count by Client_IP</query>
           <earliest>$field1.earliest$</earliest>
           <latest>$field1.latest$</latest>
@@ -148,23 +169,27 @@
   </row>
   <row>
     <panel>
-      <title>Identify Spike in Modifying HTTP Requests</title>
+      <title>Identify Spike in Modifying HTTP Requests (POST, PUT, DELETE, TRACE, CONNECT)</title>
       <chart>
-        <title>POST, PUT, DELETE, TRACE, CONNECT</title>
+        <title>$host$, $client_ip$, $code$</title>
         <search>
-          <query>index=main  $log_path$  NOT("*Splunk Website Monitoring*") host=$host$
+          <query>index=linux  $log_path$  NOT("*Splunk Website Monitoring*") $host$
 | rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
 | rex field=_raw "\"(?&lt;HTTP_Method&gt;\w+):\/\/(?&lt;Target_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?&lt;HTTP_Request_URL&gt;.*)\"\s\""
+| fillnull value="/" HTTP_Request_URL
+| eval Target_IP=coalesce(host,Target_IP)
 | search HTTP_Request_Method!=GET AND HTTP_Request_Method!=HEAD
-| search HTTP_Response_Code=*$code$* 
-| search Client_IP=*$client_ip$*
+| search $code$ 
+| search $client_ip$
 | eval Request_Path=urldecode(HTTP_Request_Path) 
 | eval Request_URL=urldecode(HTTP_Request_URL) 
 | timechart count by Request_Path
 | append 
-    [ search index=main source="/var/log/*access.log*" NOT("*Splunk Website Monitoring*")
+    [ search index=linux source="/var/log/*access.log*" NOT("*Splunk Website Monitoring*")
     | rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
     | search HTTP_Request_Method!=GET AND HTTP_Request_Method!=HEAD
+    | search $code$ 
+| search $client_ip$
     | timechart count by HTTP_Request_Method ]</query>
           <earliest>$field1.earliest$</earliest>
           <latest>$field1.latest$</latest>
@@ -179,15 +204,17 @@
       </chart>
     </panel>
     <panel>
-      <title>Modified Paths</title>
+      <title>Modified Paths (POST, PUT, DELETE, TRACE, CONNECT)</title>
       <chart>
-        <title>POST, PUT, DELETE, TRACE, CONNECT</title>
+        <title>$host$, $client_ip$, $code$</title>
         <search>
-          <query>index=main  $log_path$  NOT("*Splunk Website Monitoring*") host=$host$
+          <query>index=linux  $log_path$  NOT("*Splunk Website Monitoring*") $host$
 | rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
 | rex field=_raw "\"(?&lt;HTTP_Method&gt;\w+):\/\/(?&lt;Target_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?&lt;HTTP_Request_URL&gt;.*)\"\s\""
-| search HTTP_Response_Code=*$code$* 
-| search Client_IP=*$client_ip$*
+| fillnull value="/" HTTP_Request_URL
+| eval Target_IP=coalesce(host,Target_IP)
+| search $code$ 
+| search $client_ip$
 | search HTTP_Request_Method!=GET
 | eval Request_Path=urldecode(HTTP_Request_Path) 
 | eval Request_URL=urldecode(HTTP_Request_URL) 
@@ -205,8 +232,9 @@
     <panel>
       <title>Top 7 HTTP Request Paths</title>
       <table>
+        <title>$host$</title>
         <search>
-          <query>index=main  $log_path$  NOT("*Splunk Website Monitoring*") host=$host$
+          <query>index=linux  $log_path$  NOT("*Splunk Website Monitoring*") $host$
 | rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
 | rex field=_raw "\"(?&lt;HTTP_Method&gt;\w+):\/\/(?&lt;Target_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?&lt;HTTP_Request_URL&gt;.*)\"\s\""
 | top HTTP_Request_Path limit=7 Target_IP</query>
@@ -218,11 +246,11 @@
       </table>
     </panel>
     <panel>
-      <title>Interesting User-Agents</title>
+      <title>Interesting User-Agents (Non-Mozilla User-Agents)</title>
       <chart>
-        <title>(Non-Mozilla User-Agents)</title>
+        <title>$host$</title>
         <search>
-          <query>index=main  $log_path$  NOT("*Splunk Website Monitoring*") host=$host$
+          <query>index=linux  $log_path$  NOT("*Splunk Website Monitoring*") $host$
 | rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
 | search User_Agent!="Mozilla*" OR User_Agent="*nmap*" OR User_Agent="*nikto*"
 | timechart count by User_Agent</query>
@@ -239,13 +267,16 @@
     <panel>
       <title>SQLi Strings</title>
       <chart>
+        <title>$host$, $client_ip$, $code$</title>
         <search>
-          <query>index=main  $log_path$  NOT("*Splunk Website Monitoring*") host=$host$
+          <query>index=linux  $log_path$  NOT("*Splunk Website Monitoring*") $host$
 | rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
 | search HTTP_Response_Code&gt;=200 AND HTTP_Response_Code&lt;300
 | rex field=_raw "\"(?&lt;HTTP_Method&gt;\w+):\/\/(?&lt;Target_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?&lt;HTTP_Request_URL&gt;.*)\"\s\""
-| search HTTP_Response_Code=*$code$* 
-| search Client_IP=*$client_ip$*
+| search $code$ 
+| search $client_ip$
+| fillnull value="/" HTTP_Request_URL
+| eval Target_IP=coalesce(host,Target_IP)
 | eval Request_Path=urldecode(HTTP_Request_Path) 
 | eval Request_URL=urldecode(HTTP_Request_URL) 
 | search (Request_Path="* and *" OR Request_Path="* or *" OR Request_Path="* xor *" OR Request_Path="*%*" OR Request_Path="* union *" OR Request_Path="*--*" OR Request_Path="*'*") AND Request_Path!="*&lt;script&gt;*"
@@ -262,12 +293,15 @@
     <panel>
       <title>XSS Strings</title>
       <chart>
+        <title>$host$, $client_ip$, $code$</title>
         <search>
-          <query>index=main  $log_path$  NOT("*Splunk Website Monitoring*") host=$host$
+          <query>index=linux  $log_path$  NOT("*Splunk Website Monitoring*") $host$
 | rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
 | rex field=_raw "\"(?&lt;HTTP_Method&gt;\w+):\/\/(?&lt;Target_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?&lt;HTTP_Request_URL&gt;.*)\"\s\""
-| search HTTP_Response_Code=*$code$* 
-| search Client_IP=*$client_ip$*
+| search $code$ 
+| search $client_ip$
+| fillnull value="/" HTTP_Request_URL
+| eval Target_IP=coalesce(host,Target_IP)
 | eval Request_Path=urldecode(HTTP_Request_Path) 
 | eval Request_URL=urldecode(HTTP_Request_URL) 
 | search Request_Path="*&lt;script&gt;*" OR Request_URL="*&lt;script&gt;*"
@@ -285,12 +319,15 @@
     <panel>
       <title>File Inclusion Strings</title>
       <chart>
+        <title>$host$, $client_ip$, $code$</title>
         <search>
-          <query>index=main  $log_path$  NOT("*Splunk Website Monitoring*") host=$host$
+          <query>index=linux  $log_path$  NOT("*Splunk Website Monitoring*") $host$
 | rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
 | rex field=_raw "\"(?&lt;HTTP_Method&gt;\w+):\/\/(?&lt;Target_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?&lt;HTTP_Request_URL&gt;.*)\"\s\""
-| search HTTP_Response_Code=*$code$* 
-| search Client_IP=*$client_ip$*
+| search $code$ 
+| search $client_ip$
+| fillnull value="/" HTTP_Request_URL
+| eval Target_IP=coalesce(host,Target_IP)
 | eval Request_Path=urldecode(HTTP_Request_Path) 
 | eval Request_URL=urldecode(HTTP_Request_URL)
 | search Request_URL="*../*" OR Request_Path="*../*" OR Request_URL="*=file:///*" OR Request_Path="*=file:///*" OR Request_URL="*=/*" OR Request_Path="*=/*" OR Request_Path="*=http*" OR Request_URL="*=http*"
@@ -308,15 +345,17 @@
   </row>
   <row>
     <panel>
-      <title>SQL Injection Attacks</title>
+      <title>SQL Injection Attacks  --- (AND, OR, XOR, %, UNION, ',  --)</title>
       <table>
-        <title>AND, OR, XOR, %, UNION, ',  --</title>
+        <title>$host$, $client_ip$, $code$</title>
         <search>
-          <query>index=main  $log_path$  NOT("*Splunk Website Monitoring*") host=$host$
+          <query>index=linux  $log_path$  NOT("*Splunk Website Monitoring*") $host$
 | rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
 | rex field=_raw "\"(?&lt;HTTP_Method&gt;\w+):\/\/(?&lt;Target_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?&lt;HTTP_Request_URL&gt;.*)\"\s\""
-| search HTTP_Response_Code=*$code$* 
-| search Client_IP=*$client_ip$*
+| search $code$ 
+| search $client_ip$
+| fillnull value="/" HTTP_Request_URL
+| eval Target_IP=coalesce(host,Target_IP)
 | eval Request_Path=urldecode(HTTP_Request_Path) 
 | eval Request_URL=urldecode(HTTP_Request_URL) 
 | search (Request_Path="* and *" OR Request_Path="* or *" OR Request_Path="* xor *" OR Request_Path="*%*" OR Request_Path="* union *" OR Request_Path="*--*" OR Request_Path="='*") AND Request_Path!="*&lt;script&gt;*"
@@ -331,15 +370,17 @@
   </row>
   <row>
     <panel>
-      <title>XSS Attacks (DOM, Reflected, and Stored)</title>
+      <title>XSS Attacks (DOM, Reflected, and Stored) -- &lt;script&gt;</title>
       <table>
-        <title>&lt;script&gt;</title>
+        <title>$host$, $client_ip$, $code$</title>
         <search>
-          <query>index=main  $log_path$  NOT("*Splunk Website Monitoring*") host=$host$
+          <query>index=linux  $log_path$  NOT("*Splunk Website Monitoring*") $host$
 | rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
 | rex field=_raw "\"(?&lt;HTTP_Method&gt;\w+):\/\/(?&lt;Target_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?&lt;HTTP_Request_URL&gt;.*)\"\s\""
-| search HTTP_Response_Code=*$code$* 
-| search Client_IP=*$client_ip$*
+| search $code$ 
+| search $client_ip$
+| fillnull value="/" HTTP_Request_URL
+| eval Target_IP=coalesce(host,Target_IP)
 | eval Request_Path=urldecode(HTTP_Request_Path) 
 | eval Request_URL=urldecode(HTTP_Request_URL) 
 | search Request_Path="*&lt;script&gt;*" OR Request_URL="*&lt;script&gt;*"
@@ -354,15 +395,17 @@
   </row>
   <row>
     <panel>
-      <title>File Inclusion</title>
+      <title>File Inclusion ((***LFI Directory Traversal Attack (../../) Will Have a Request_URL and Target_IP. Others Such As file:\\\ or ?field=/etc/passwd Will Not. *** RFIs Will Have 200 Responses))</title>
       <table>
-        <title>***A Successful LFI Directory Traversal Attack (../../) Will Have a Request_URL and Target_IP. Others Such As file:\\\ or ?field=/etc/passwd Will Not. *****Successful RFIs Will Have 200 Responses</title>
+        <title>$host$, $client_ip$, $code$</title>
         <search>
-          <query>index=main  $log_path$  NOT("*Splunk Website Monitoring*") host=$host$
+          <query>index=linux  $log_path$  NOT("*Splunk Website Monitoring*") $host$
 | rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
 | rex field=_raw "\"(?&lt;HTTP_Method&gt;\w+):\/\/(?&lt;Target_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?&lt;HTTP_Request_URL&gt;.*)\"\s\""
-| search HTTP_Response_Code=*$code$* 
-| search Client_IP=*$client_ip$*
+| search $code$ 
+| search $client_ip$
+| fillnull value="/" HTTP_Request_URL
+| eval Target_IP=coalesce(host,Target_IP)
 | eval Request_Path=urldecode(HTTP_Request_Path) 
 | eval Request_URL=urldecode(HTTP_Request_URL)
 | search Request_URL="*../*" OR Request_Path="*../*" OR Request_URL="*=file:///*" OR Request_Path="*=file:///*" OR Request_URL="*=/*" OR Request_Path="*=/*" OR Request_Path="*=http*" OR Request_URL="*=http*"
@@ -379,11 +422,12 @@
     <panel>
       <title>CSRF     (URL Edited in Browser)</title>
       <table>
+        <title>$host$, $client_ip$, $code$</title>
         <search>
-          <query>index=main  $log_path$  NOT("*Splunk Website Monitoring*") host=$host$
+          <query>index=linux  $log_path$  NOT("*Splunk Website Monitoring*") $host$
 | rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
-| search HTTP_Response_Code=*$code$* 
-| search Client_IP=*$client_ip$*
+| search $code$ 
+| search $client_ip$
 | dedup host,Client_IP,HTTP_Request_Method,HTTP_Response_Code,HTTP_Request,User_Agent
 | eval Request_Path=urldecode(HTTP_Request_Path) 
 | search (HTTP_Request="-" AND Request_Path="*/?*")
@@ -412,12 +456,13 @@
         <default>*</default>
       </input>
       <table>
+        <title>$host$, $client_ip$, $code$</title>
         <search>
-          <query>index=main  $log_path$  NOT("*Splunk Website Monitoring*") host=$host$
+          <query>index=linux  $log_path$  NOT("*Splunk Website Monitoring*") $host$
 | rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
 | rex field=_raw "\"(?&lt;HTTP_Method&gt;\w+):\/\/(?&lt;Target_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?&lt;HTTP_Request_URL&gt;.*)\"\s\""
-| search HTTP_Response_Code=*$code$* 
-| search Client_IP=*$client_ip$*
+| search $code$ 
+| search $client_ip$
 | dedup host,Client_IP,HTTP_Response_Code,User_Agent,HTTP_Request,HTTP_Request_Path
 | eval Request_Path=urldecode(HTTP_Request_Path) 
 | eval Request_URL=urldecode(HTTP_Request_URL) 
@@ -433,15 +478,17 @@
   </row>
   <row>
     <panel>
-      <title>Web Request Logs</title>
+      <title>Web Request Logs  (((Dedup on Client_IP, HTTP_Response_Code, HTTP_Request_Method, User_Agent, HTTP_Request_Path, and HTTP_Request ))</title>
       <table>
-        <title>(Dedup on Client_IP, HTTP_Response_Code, HTTP_Request_Method, User_Agent, HTTP_Request_Path, and HTTP_Request</title>
+        <title>$host$, $client_ip$, $code$</title>
         <search>
-          <query>index=main  $log_path$  NOT("*Splunk Website Monitoring*") host=$host$
+          <query>index=linux  $log_path$  NOT("*Splunk Website Monitoring*") $host$
 | rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
 | rex field=_raw "\"(?&lt;HTTP_Method&gt;\w+):\/\/(?&lt;Target_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?&lt;HTTP_Request_URL&gt;.*)\"\s\""
-| search HTTP_Response_Code=*$code$* 
-| search Client_IP=*$client_ip$*
+| fillnull value="/" HTTP_Request_URL
+| eval Target_IP=coalesce(host,Target_IP)
+| search $code$ 
+| search $client_ip$
 | dedup host,Client_IP,HTTP_Response_Code,User_Agent,HTTP_Request,HTTP_Request_Path
 | table _time host Target_IP Client_IP HTTP_Response_Code HTTP_Request_Method User_Agent HTTP_Request_Path HTTP_Request</query>
           <earliest>$field1.earliest$</earliest>
@@ -458,11 +505,11 @@
       <table>
         <title>Doesnt Work b/c Parameters Sent Aren't Logged. You'd Need FW Logs For this :(((((((((((((((((((((((</title>
         <search>
-          <query>index=main  $log_path$  NOT("*Splunk Website Monitoring*") host=$host$
+          <query>index=linux  $log_path$  NOT("*Splunk Website Monitoring*") $host$
 | rex field=_raw "(?&lt;Client_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*\]\s\"(?&lt;HTTP_Request_Method&gt;\w+)\s(?&lt;HTTP_Request_Path&gt;.+)\sHTTP\/1\.1\"\s(?&lt;HTTP_Response_Code&gt;\d{3}).+\"(?&lt;HTTP_Request&gt;.*)\"\s\"(?&lt;User_Agent&gt;\w.*)\""
 | rex field=_raw "\"(?&lt;HTTP_Method&gt;\w+):\/\/(?&lt;Target_IP&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?&lt;HTTP_Request_URL&gt;.*)\"\s\""
-| search HTTP_Response_Code=*$code$* 
-| search Client_IP=*$client_ip$*
+| search $code$ 
+| search $client_ip$
 | eval Request_URL=urldecode(HTTP_Request_URL)
 | eval Request_Path=urldecode(HTTP_Request_Path) 
 | search (Request_URL IN ("*;*","* cat*","* useradd*","* passwd*","* whoami*","*|*") OR Request_Path IN ("*;*","* cat*","* useradd*","* passwd*","* whoami*","*|*"))
