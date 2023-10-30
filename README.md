@@ -15,4 +15,4 @@
 
 ### Dashboards
 > A working repository of dashboards I built, including detecting for web threats, user-based threats, etc. 
-https://github.com/kogatana-x/splunk/tree/dashboards/dashboards
+- https://github.com/kogatana-x/splunk/tree/dashboards/dashboards
