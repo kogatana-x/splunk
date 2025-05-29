@@ -96,3 +96,16 @@
  ![](images/19.png)
 4. Set up forwarders w the following command: 
 -`./splunk add monitor / -index linux`
+
+
+## Backing Up Your Indexes 
+> From the server console (ie login to the computer that is hosting your splunk server and open a terminal)
+
+1. Backup your existing cold/warm buckets:
+` cp -r /opt/splunk/var/lib/splunk/<indexname>/* ~/<indexname>/`
+
+2) Roll Hot DB to Warm DB
+`./splunk search "| debug cmd=roll index= <indexname> "`
+
+3) Backup new warm bucket:
+` cp -r /opt/splunk/var/lib/splunk/<indexname>/db/* ~/<indexname>/db/`
